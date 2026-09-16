@@ -1,0 +1,368 @@
+/**
+ * HEAL3 SNS-Creator - Smartphone Core Drawing, Animation & Background Export Engine PoC
+ * 
+ * Main Application Coordinator
+ */
+
+import { useCallback, useEffect, useState } from 'react';
+import { BaseImageState, DeveloperInfoData, MotionId, StampItem, StampType } from './engine/types.ts';
+import { ExportQuality, QUALITY_PRESETS } from './engine/config.ts';
+import { loadPresetImage, SAMPLE_PRESETS, SamplePreset } from './engine/sampleImages.ts';
+import { detectDeviceBrowser, getCurrentViewportDimensions, processUserImage } from './engine/viewport.ts';
+import { checkWebCodecsSupport, exportArtwork, PreferredExportMode } from './engine/exporter.ts';
+import CanvasStage from './components/CanvasStage.tsx';
+import Header from './components/Header.tsx';
+import Toolbar from './components/Toolbar.tsx';
+import FinishView from './components/FinishView.tsx';
+import DeveloperInfoModal from './components/DeveloperInfoModal.tsx';
+
+// Initial sample stamps for instant live demonstration
+const INITIAL_STAMPS: StampItem[] = [
+  {
+    id: 'stamp-1',
+    type: 'star',
+    x: 0.32,
+    y: 0.40,
+    scale: 0.24,
+    rotation: -12,
+    motionId: 'bounce',
+    motionSpeed: 1.0,
+    motionOffsetMs: 0,
+    color: '#FACC15',
+    accentColor: '#FEF08A',
+  },
+  {
+    id: 'stamp-2',
+    type: 'heart',
+    x: 0.68,
+    y: 0.45,
+    scale: 0.22,
+    rotation: 14,
+    motionId: 'pulse',
+    motionSpeed: 1.0,
+    motionOffsetMs: 400,
+    color: '#FB7185',
+    accentColor: '#FDA4AF',
+  },
+];
+
+export default function App() {
+  // BASE image state
+  const [baseImage, setBaseImage] = useState<BaseImageState>({
+    image: null,
+    originalWidth: 720,
+    originalHeight: 1280,
+    processedWidth: 720,
+    processedHeight: 1280,
+    aspectRatio: 720 / 1280,
+    isLoaded: false,
+  });
+
+  // Stamps collection (normalized coordinates)
+  const [stamps, setStamps] = useState<StampItem[]>(INITIAL_STAMPS);
+  const [selectedStampId, setSelectedStampId] = useState<string | null>(null);
+
+  // Workflow state
+  const [isFinishedMode, setIsFinishedMode] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportStatusText, setExportStatusText] = useState('');
+  const [exportResult, setExportResult] = useState<any | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [preferredExportMode, setPreferredExportMode] = useState<PreferredExportMode>('auto');
+  const [exportQuality, setExportQuality] = useState<ExportQuality>('current');
+
+  // Developer diagnostics info
+  const [isDevInfoOpen, setIsDevInfoOpen] = useState(false);
+  const [devInfo, setDevInfo] = useState<DeveloperInfoData>(() => {
+    const vp = typeof window !== 'undefined' ? getCurrentViewportDimensions() : {
+      windowWidth: 375,
+      windowHeight: 812,
+      visualViewportScale: 1.0,
+      dpr: 2.0,
+    };
+    return {
+      deviceBrowserInfo: typeof window !== 'undefined' ? detectDeviceBrowser() : 'Browser',
+      viewportWidth: vp.windowWidth,
+      viewportHeight: vp.windowHeight,
+      visualViewportScale: vp.visualViewportScale,
+      devicePixelRatio: vp.dpr,
+      canvasBufferWidth: 720,
+      canvasBufferHeight: 1280,
+      canvasDisplayWidth: 360,
+      canvasDisplayHeight: 640,
+      baseOriginalWidth: 720,
+      baseOriginalHeight: 1280,
+      baseProcessedWidth: 720,
+      baseProcessedHeight: 1280,
+      fps: 60,
+      exportFps: null,
+      stampCount: INITIAL_STAMPS.length,
+      exportQuality: 'current',
+      requestedBitrate: QUALITY_PRESETS.current.bitrateLabel,
+      exportTimeMs: null,
+      exportFileSize: null,
+      exportMethod: null,
+      exportMimeType: null,
+      outputResolution: null,
+      isGifFallback: false,
+      gifFallbackReason: null,
+      webCodecsAvailable: false,
+      webCodecsH264Available: false,
+    };
+  });
+
+  // Check WebCodecs capabilities & load initial preset image on mount
+  useEffect(() => {
+    checkWebCodecsSupport().then((status) => {
+      setDevInfo((prev) => ({
+        ...prev,
+        webCodecsAvailable: status.hasVideoEncoder,
+        webCodecsH264Available: status.hasH264,
+      }));
+    });
+
+    loadPresetImage(SAMPLE_PRESETS[0])
+      .then((loaded) => setBaseImage(loaded))
+      .catch((err) => console.error('Failed to load initial preset:', err));
+  }, []);
+
+  // Update dev metrics
+  const handleFpsUpdate = useCallback((fps: number) => {
+    setDevInfo((prev) => ({ ...prev, fps }));
+  }, []);
+
+  const handleCanvasMetricsUpdate = useCallback(
+    (bufferW: number, bufferH: number, dispW: number, dispH: number) => {
+      setDevInfo((prev) => ({
+        ...prev,
+        canvasBufferWidth: bufferW,
+        canvasBufferHeight: bufferH,
+        canvasDisplayWidth: dispW,
+        canvasDisplayHeight: dispH,
+      }));
+    },
+    []
+  );
+
+  const refreshViewportMetrics = useCallback(() => {
+    const vp = getCurrentViewportDimensions();
+    setDevInfo((prev) => ({
+      ...prev,
+      deviceBrowserInfo: detectDeviceBrowser(),
+      viewportWidth: vp.windowWidth,
+      viewportHeight: vp.windowHeight,
+      visualViewportScale: vp.visualViewportScale,
+      devicePixelRatio: vp.dpr,
+      stampCount: stamps.length,
+      baseOriginalWidth: baseImage.originalWidth,
+      baseOriginalHeight: baseImage.originalHeight,
+      baseProcessedWidth: baseImage.processedWidth,
+      baseProcessedHeight: baseImage.processedHeight,
+    }));
+  }, [stamps.length, baseImage]);
+
+  useEffect(() => {
+    refreshViewportMetrics();
+    window.addEventListener('resize', refreshViewportMetrics);
+    return () => window.removeEventListener('resize', refreshViewportMetrics);
+  }, [refreshViewportMetrics]);
+
+  // Stamp manipulation handlers
+  const handleAddStamp = (type: StampType) => {
+    // Default motion recipes for new stamps
+    const defaultMotion: MotionId = type === 'star' ? 'bounce' : type === 'heart' ? 'pulse' : 'rotate';
+    const defaultColor = type === 'star' ? '#FACC15' : type === 'heart' ? '#FB7185' : '#38BDF8';
+    const defaultAccent = type === 'star' ? '#FEF08A' : type === 'heart' ? '#FDA4AF' : '#BAE6FD';
+
+    // Jitter position slightly around center
+    const jitterX = (Math.random() - 0.5) * 0.15;
+    const jitterY = (Math.random() - 0.5) * 0.15;
+
+    const newStamp: StampItem = {
+      id: `stamp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      type,
+      x: Math.max(0.2, Math.min(0.8, 0.5 + jitterX)),
+      y: Math.max(0.2, Math.min(0.8, 0.5 + jitterY)),
+      scale: 0.22,
+      rotation: Math.round((Math.random() - 0.5) * 20),
+      motionId: defaultMotion,
+      motionSpeed: 1.0,
+      motionOffsetMs: Math.round(Math.random() * 600),
+      color: defaultColor,
+      accentColor: defaultAccent,
+    };
+
+    setStamps((prev) => [...prev, newStamp]);
+    setSelectedStampId(newStamp.id);
+  };
+
+  const handleUpdateStamp = (updated: StampItem) => {
+    setStamps((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+  };
+
+  const handleUpdateStampMotion = (motionId: MotionId) => {
+    if (!selectedStampId) return;
+    setStamps((prev) =>
+      prev.map((s) => (s.id === selectedStampId ? { ...s, motionId } : s))
+    );
+  };
+
+  const handleUpdateStampColor = (color: string) => {
+    if (!selectedStampId) return;
+    setStamps((prev) =>
+      prev.map((s) => (s.id === selectedStampId ? { ...s, color, accentColor: color } : s))
+    );
+  };
+
+  const handleDeleteSelectedStamp = () => {
+    if (!selectedStampId) return;
+    setStamps((prev) => prev.filter((s) => s.id !== selectedStampId));
+    setSelectedStampId(null);
+  };
+
+  // Background export trigger
+  const runExport = useCallback(async () => {
+    setIsExporting(true);
+    setExportProgress(0);
+    setExportStatusText('書き出しを準備中…');
+    setExportError(null);
+
+    try {
+      const result = await exportArtwork(
+        baseImage,
+        stamps,
+        preferredExportMode,
+        exportQuality,
+        (percent, text) => {
+          setExportProgress(percent);
+          setExportStatusText(text);
+        }
+      );
+
+      setExportResult(result);
+      setDevInfo((prev) => ({
+        ...prev,
+        exportQuality: result.quality,
+        requestedBitrate: result.requestedBitrate,
+        exportTimeMs: result.durationMs,
+        exportFps: result.exportFps,
+        exportFileSize: `${(result.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB`,
+        exportMethod: result.method,
+        exportMimeType: result.mimeType,
+        outputResolution: `${result.width} × ${result.height} px`,
+        isGifFallback: result.isGifFallback,
+        gifFallbackReason: result.fallbackReason || null,
+      }));
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      setExportError(err.message || '書き出し処理中にエラーが発生しました');
+    } finally {
+      setIsExporting(false);
+    }
+  }, [baseImage, stamps, preferredExportMode, exportQuality]);
+
+  // Handle "完成" (Finish)
+  const handleFinishClick = () => {
+    setIsFinishedMode(true);
+    setSelectedStampId(null);
+    runExport();
+  };
+
+  // User selects image from Photo Library
+  const handleSelectUserFile = async (file: File) => {
+    try {
+      const processed = await processUserImage(file);
+      setBaseImage(processed);
+      refreshViewportMetrics();
+    } catch (err: any) {
+      alert(err.message || '画像の処理に失敗しました');
+    }
+  };
+
+  // User selects sample preset
+  const handleSelectPreset = async (preset: SamplePreset) => {
+    try {
+      const loaded = await loadPresetImage(preset);
+      setBaseImage(loaded);
+      refreshViewportMetrics();
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
+  const selectedStamp = stamps.find((s) => s.id === selectedStampId) || null;
+
+  return (
+    <div
+      id="app-root"
+      className="flex flex-col h-screen w-screen overflow-hidden bg-neutral-950 text-neutral-100 font-sans select-none touch-none"
+    >
+      {/* Header bar */}
+      <Header
+        isFinishedMode={isFinishedMode}
+        onFinishClick={handleFinishClick}
+        onSelectUserFile={handleSelectUserFile}
+        onSelectPreset={handleSelectPreset}
+        onToggleDevInfo={() => setIsDevInfoOpen(!isDevInfoOpen)}
+        isDevInfoOpen={isDevInfoOpen}
+      />
+
+      {/* Main Canvas Viewport Area */}
+      <main className="flex-1 relative w-full h-full flex items-center justify-center overflow-hidden">
+        <CanvasStage
+          baseImage={baseImage}
+          stamps={stamps}
+          selectedStampId={selectedStampId}
+          isFinishedMode={isFinishedMode}
+          onSelectStamp={setSelectedStampId}
+          onUpdateStamp={handleUpdateStamp}
+          onFpsUpdate={handleFpsUpdate}
+          onCanvasMetricsUpdate={handleCanvasMetricsUpdate}
+        />
+      </main>
+
+      {/* Bottom controls: Toolbar when in edit mode, FinishView when finished */}
+      {!isFinishedMode ? (
+        <Toolbar
+          stamps={stamps}
+          selectedStamp={selectedStamp}
+          onAddStamp={handleAddStamp}
+          onUpdateStampMotion={handleUpdateStampMotion}
+          onUpdateStampColor={handleUpdateStampColor}
+          onDeleteSelectedStamp={handleDeleteSelectedStamp}
+          onDeselect={() => setSelectedStampId(null)}
+        />
+      ) : (
+        <FinishView
+          isExporting={isExporting}
+          exportProgress={exportProgress}
+          exportStatusText={exportStatusText}
+          exportResult={exportResult}
+          exportError={exportError}
+          onBackToEdit={() => setIsFinishedMode(false)}
+          onRetryExport={runExport}
+        />
+      )}
+
+      {/* Developer Diagnostics Modal */}
+      <DeveloperInfoModal
+        isOpen={isDevInfoOpen}
+        onClose={() => setIsDevInfoOpen(false)}
+        devInfo={devInfo}
+        preferredMode={preferredExportMode}
+        onSelectPreferredMode={setPreferredExportMode}
+        exportQuality={exportQuality}
+        onSelectExportQuality={(q) => {
+          setExportQuality(q);
+          setDevInfo((prev) => ({
+            ...prev,
+            exportQuality: q,
+            requestedBitrate: QUALITY_PRESETS[q].bitrateLabel,
+          }));
+        }}
+        onRefreshMetrics={refreshViewportMetrics}
+      />
+    </div>
+  );
+}

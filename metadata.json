@@ -1,0 +1,6 @@
+{
+  "name": "HEAL3 SNS-Creator",
+  "description": "Smartphone Web App Core Drawing, Animation & Background Export Engine PoC",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
