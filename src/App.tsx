@@ -5,11 +5,12 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { BaseImageState, DeveloperInfoData, MotionId, StampItem, StampType } from './engine/types.ts';
-import { ExportQuality, QUALITY_PRESETS } from './engine/config.ts';
-import { loadPresetImage, SAMPLE_PRESETS, SamplePreset } from './engine/sampleImages.ts';
+import { BaseImageState, DeveloperInfoData, MotionId, SceneMotionId, StampItem, StampType } from './engine/types.ts';
+import { calculateExportDimensions, ExportQuality, QUALITY_PRESETS } from './engine/config.ts';
+import { createForegroundItem, loadPresetImage, SAMPLE_AVATAR_DATA_URL, SAMPLE_PRESETS, SamplePreset } from './engine/sampleImages.ts';
 import { detectDeviceBrowser, getCurrentViewportDimensions, processUserImage } from './engine/viewport.ts';
 import { checkWebCodecsSupport, exportArtwork, PreferredExportMode } from './engine/exporter.ts';
+import { SCENE_MOTION_RECIPES } from './engine/motion.ts';
 import CanvasStage from './components/CanvasStage.tsx';
 import Header from './components/Header.tsx';
 import Toolbar from './components/Toolbar.tsx';
@@ -22,7 +23,7 @@ const INITIAL_STAMPS: StampItem[] = [
     id: 'stamp-1',
     type: 'star',
     x: 0.32,
-    y: 0.40,
+    y: 0.38,
     scale: 0.24,
     rotation: -12,
     motionId: 'bounce',
@@ -35,7 +36,7 @@ const INITIAL_STAMPS: StampItem[] = [
     id: 'stamp-2',
     type: 'heart',
     x: 0.68,
-    y: 0.45,
+    y: 0.42,
     scale: 0.22,
     rotation: 14,
     motionId: 'pulse',
@@ -58,7 +59,10 @@ export default function App() {
     isLoaded: false,
   });
 
-  // Stamps collection (normalized coordinates)
+  // Scene Motion state (None, Fade In, Gentle Zoom, Fade + Zoom)
+  const [sceneMotionId, setSceneMotionId] = useState<SceneMotionId>('none');
+
+  // Stamps & Foreground Items collection (normalized coordinates)
   const [stamps, setStamps] = useState<StampItem[]>(INITIAL_STAMPS);
   const [selectedStampId, setSelectedStampId] = useState<string | null>(null);
 
@@ -71,6 +75,13 @@ export default function App() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [preferredExportMode, setPreferredExportMode] = useState<PreferredExportMode>('auto');
   const [exportQuality, setExportQuality] = useState<ExportQuality>('current');
+
+  // Calculate planned export dimensions to avoid resolution mismatch display
+  const plannedDims = calculateExportDimensions(
+    baseImage.processedWidth || baseImage.originalWidth || 720,
+    baseImage.processedHeight || baseImage.originalHeight || 1280,
+    exportQuality
+  );
 
   // Developer diagnostics info
   const [isDevInfoOpen, setIsDevInfoOpen] = useState(false);
@@ -104,11 +115,13 @@ export default function App() {
       exportFileSize: null,
       exportMethod: null,
       exportMimeType: null,
-      outputResolution: null,
+      outputResolution: `${plannedDims.width} × ${plannedDims.height} px (予定)`,
       isGifFallback: false,
       gifFallbackReason: null,
       webCodecsAvailable: false,
       webCodecsH264Available: false,
+      sceneMotion: SCENE_MOTION_RECIPES.none.nameJa,
+      foregroundItemCount: 0,
     };
   });
 
@@ -147,6 +160,13 @@ export default function App() {
 
   const refreshViewportMetrics = useCallback(() => {
     const vp = getCurrentViewportDimensions();
+    const fgCount = stamps.filter((s) => s.isForeground || s.type === 'foreground_image').length;
+    const currentPlanned = calculateExportDimensions(
+      baseImage.processedWidth || baseImage.originalWidth || 720,
+      baseImage.processedHeight || baseImage.originalHeight || 1280,
+      exportQuality
+    );
+
     setDevInfo((prev) => ({
       ...prev,
       deviceBrowserInfo: detectDeviceBrowser(),
@@ -155,12 +175,17 @@ export default function App() {
       visualViewportScale: vp.visualViewportScale,
       devicePixelRatio: vp.dpr,
       stampCount: stamps.length,
+      foregroundItemCount: fgCount,
+      sceneMotion: SCENE_MOTION_RECIPES[sceneMotionId]?.nameJa || 'なし',
       baseOriginalWidth: baseImage.originalWidth,
       baseOriginalHeight: baseImage.originalHeight,
       baseProcessedWidth: baseImage.processedWidth,
       baseProcessedHeight: baseImage.processedHeight,
+      outputResolution: prev.outputResolution && !prev.outputResolution.includes('予定')
+        ? prev.outputResolution
+        : `${currentPlanned.width} × ${currentPlanned.height} px (予定)`,
     }));
-  }, [stamps.length, baseImage]);
+  }, [stamps, baseImage, exportQuality, sceneMotionId]);
 
   useEffect(() => {
     refreshViewportMetrics();
@@ -170,12 +195,10 @@ export default function App() {
 
   // Stamp manipulation handlers
   const handleAddStamp = (type: StampType) => {
-    // Default motion recipes for new stamps
     const defaultMotion: MotionId = type === 'star' ? 'bounce' : type === 'heart' ? 'pulse' : 'rotate';
     const defaultColor = type === 'star' ? '#FACC15' : type === 'heart' ? '#FB7185' : '#38BDF8';
     const defaultAccent = type === 'star' ? '#FEF08A' : type === 'heart' ? '#FDA4AF' : '#BAE6FD';
 
-    // Jitter position slightly around center
     const jitterX = (Math.random() - 0.5) * 0.15;
     const jitterY = (Math.random() - 0.5) * 0.15;
 
@@ -197,6 +220,34 @@ export default function App() {
     setSelectedStampId(newStamp.id);
   };
 
+  // Foreground Avatar PoC Handlers
+  const handleAddForegroundSample = async () => {
+    try {
+      const item = await createForegroundItem(SAMPLE_AVATAR_DATA_URL, 0.44);
+      setStamps((prev) => [...prev, item]);
+      setSelectedStampId(item.id);
+    } catch (err) {
+      console.error('Failed to create sample foreground item:', err);
+    }
+  };
+
+  const handleAddForegroundFile = async (file: File) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const dataUrl = e.target?.result as string;
+        if (dataUrl) {
+          const item = await createForegroundItem(dataUrl, 0.44);
+          setStamps((prev) => [...prev, item]);
+          setSelectedStampId(item.id);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      alert(err.message || '透過画像の読み込みに失敗しました');
+    }
+  };
+
   const handleUpdateStamp = (updated: StampItem) => {
     setStamps((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
   };
@@ -205,6 +256,13 @@ export default function App() {
     if (!selectedStampId) return;
     setStamps((prev) =>
       prev.map((s) => (s.id === selectedStampId ? { ...s, motionId } : s))
+    );
+  };
+
+  const handleUpdateStampScale = (newScale: number) => {
+    if (!selectedStampId) return;
+    setStamps((prev) =>
+      prev.map((s) => (s.id === selectedStampId ? { ...s, scale: newScale } : s))
     );
   };
 
@@ -232,6 +290,7 @@ export default function App() {
       const result = await exportArtwork(
         baseImage,
         stamps,
+        sceneMotionId,
         preferredExportMode,
         exportQuality,
         (percent, text) => {
@@ -260,7 +319,7 @@ export default function App() {
     } finally {
       setIsExporting(false);
     }
-  }, [baseImage, stamps, preferredExportMode, exportQuality]);
+  }, [baseImage, stamps, sceneMotionId, preferredExportMode, exportQuality]);
 
   // Handle "完成" (Finish)
   const handleFinishClick = () => {
@@ -314,6 +373,7 @@ export default function App() {
           baseImage={baseImage}
           stamps={stamps}
           selectedStampId={selectedStampId}
+          sceneMotionId={sceneMotionId}
           isFinishedMode={isFinishedMode}
           onSelectStamp={setSelectedStampId}
           onUpdateStamp={handleUpdateStamp}
@@ -327,9 +387,20 @@ export default function App() {
         <Toolbar
           stamps={stamps}
           selectedStamp={selectedStamp}
+          sceneMotionId={sceneMotionId}
+          onUpdateSceneMotion={(id) => {
+            setSceneMotionId(id);
+            setDevInfo((prev) => ({
+              ...prev,
+              sceneMotion: SCENE_MOTION_RECIPES[id]?.nameJa || 'なし',
+            }));
+          }}
           onAddStamp={handleAddStamp}
+          onAddForegroundSample={handleAddForegroundSample}
+          onAddForegroundFile={handleAddForegroundFile}
           onUpdateStampMotion={handleUpdateStampMotion}
           onUpdateStampColor={handleUpdateStampColor}
+          onUpdateStampScale={handleUpdateStampScale}
           onDeleteSelectedStamp={handleDeleteSelectedStamp}
           onDeselect={() => setSelectedStampId(null)}
         />
@@ -355,10 +426,18 @@ export default function App() {
         exportQuality={exportQuality}
         onSelectExportQuality={(q) => {
           setExportQuality(q);
+          const newPlanned = calculateExportDimensions(
+            baseImage.processedWidth || baseImage.originalWidth || 720,
+            baseImage.processedHeight || baseImage.originalHeight || 1280,
+            q
+          );
           setDevInfo((prev) => ({
             ...prev,
             exportQuality: q,
             requestedBitrate: QUALITY_PRESETS[q].bitrateLabel,
+            outputResolution: prev.outputResolution && !prev.outputResolution.includes('予定')
+              ? prev.outputResolution
+              : `${newPlanned.width} × ${newPlanned.height} px (予定)`,
           }));
         }}
         onRefreshMetrics={refreshViewportMetrics}

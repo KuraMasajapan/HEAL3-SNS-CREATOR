@@ -2,9 +2,42 @@
  * HEAL3 SNS-Creator - Core Types & Interfaces
  */
 
-export type StampType = 'star' | 'heart' | 'circle';
+export type StampType = 'star' | 'heart' | 'circle' | 'foreground_image';
 
 export type MotionId = 'none' | 'bounce' | 'rotate' | 'pulse';
+
+/**
+ * Scene Motion IDs (Controls the entire artwork presentation, distinct from Item Motion)
+ */
+export type SceneMotionId = 'none' | 'fade_in' | 'gentle_zoom' | 'fade_and_zoom';
+
+export type SceneMotionType = 'intro' | 'loop';
+
+export interface SceneMotionEvaluation {
+  /** Overall opacity multiplier (0.0 = completely transparent, 1.0 = fully visible) */
+  alpha: number;
+  /** Overall scale multiplier (e.g. 0.96 -> 1.0) */
+  scale: number;
+  /** Transform origin X (normalized 0.0 - 1.0, default 0.5 = center) */
+  originX: number;
+  /** Transform origin Y (normalized 0.0 - 1.0, default 0.5 = center) */
+  originY: number;
+}
+
+export interface SceneMotionRecipe {
+  id: SceneMotionId;
+  name: string;
+  nameJa: string;
+  type: SceneMotionType;
+  /** Intro duration in ms (e.g. 650ms for smooth cinematic entrance) */
+  durationMs: number;
+  description: string;
+  /**
+   * Deterministic evaluation function of scene animation at timeMs.
+   * totalDurationMs is optional, used for seamless loop-outro transitions.
+   */
+  evaluate: (timeMs: number, totalDurationMs?: number) => SceneMotionEvaluation;
+}
 
 export interface StampItem {
   id: string;
@@ -23,10 +56,18 @@ export interface StampItem {
   motionSpeed: number;
   /** Motion phase offset in ms (to desynchronize multiple stamps) */
   motionOffsetMs: number;
-  /** Primary color of the stamp */
+  /** Primary color of the stamp (or tint) */
   color: string;
   /** Secondary or accent color */
   accentColor: string;
+  /** Whether this is a Foreground Item (e.g. cut-out avatar image) */
+  isForeground?: boolean;
+  /** URL or base64 data URL for Foreground image */
+  imageUrl?: string;
+  /** Cached HTMLImageElement for zero-allocation rendering */
+  imageElement?: HTMLImageElement | null;
+  /** Aspect ratio of the foreground image (width / height) */
+  aspectRatio?: number;
 }
 
 export interface BaseImageState {
@@ -99,6 +140,8 @@ export interface DeveloperInfoData {
   fps: number; // Preview FPS (real-time rolling)
   exportFps: number | null; // Measured/target FPS during export
   stampCount: number;
+  foregroundItemCount: number;
+  sceneMotion: SceneMotionId;
   exportQuality: ExportQuality;
   requestedBitrate: string | null;
   exportTimeMs: number | null;

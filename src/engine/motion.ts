@@ -6,11 +6,19 @@
  * acceleration, overshoot, and lingering settlement for natural aesthetics.
  */
 
-import { MotionEvaluation, MotionId, MotionRecipe } from './types.ts';
+import { MotionEvaluation, MotionId, MotionRecipe, SceneMotionEvaluation, SceneMotionId, SceneMotionRecipe } from './types.ts';
 
 // Easing functions
 function easeOutQuad(x: number): number {
   return 1 - (1 - x) * (1 - x);
+}
+
+function easeOutCubic(x: number): number {
+  return 1 - Math.pow(1 - x, 3);
+}
+
+function easeInCubic(x: number): number {
+  return x * x * x;
 }
 
 function easeInOutSine(x: number): number {
@@ -201,4 +209,152 @@ export const MOTION_RECIPES: Record<MotionId, MotionRecipe> = {
 
 export function getMotionRecipe(id: MotionId): MotionRecipe {
   return MOTION_RECIPES[id] || MOTION_RECIPES.none;
+}
+
+/**
+ * SCENE MOTION RECIPES
+ * 
+ * Controls overall presentation of the entire canvas scene (BASE + Stamps + Foreground).
+ * Completely decoupled from individual Item Motion recipes.
+ * 
+ * - Intro Duration: 650ms - 700ms for natural visual emergence
+ * - Outro Transition (when totalDurationMs is provided): smooth ease-back in the final 350ms
+ *   so video loops seamlessly on Instagram/Discord without an abrupt pop.
+ */
+export const SCENE_MOTION_RECIPES: Record<SceneMotionId, SceneMotionRecipe> = {
+  none: {
+    id: 'none',
+    name: 'None',
+    nameJa: 'なし',
+    type: 'loop',
+    durationMs: 0,
+    description: '通常表示（Scene Motion なし）',
+    evaluate: (): SceneMotionEvaluation => ({
+      alpha: 1.0,
+      scale: 1.0,
+      originX: 0.5,
+      originY: 0.5,
+    }),
+  },
+
+  fade_in: {
+    id: 'fade_in',
+    name: 'Fade In',
+    nameJa: 'フェードイン',
+    type: 'intro',
+    durationMs: 650,
+    description: '0msから滑らかに浮き出る品のあるシネマティック導入演出',
+    evaluate: (timeMs: number, totalDurationMs?: number): SceneMotionEvaluation => {
+      const introDuration = 650;
+      const outroDuration = 350;
+
+      let alpha = 1.0;
+
+      // Phase 1: Intro (0 -> 650ms): Smooth cubic ease-in
+      if (timeMs < introDuration) {
+        const p = Math.max(0, Math.min(1, timeMs / introDuration));
+        alpha = easeOutCubic(p);
+      }
+      // Phase 2: Steady display (650ms -> end - 350ms)
+      else if (!totalDurationMs || timeMs < totalDurationMs - outroDuration) {
+        alpha = 1.0;
+      }
+      // Phase 3: Outro transition for seamless looping (if total duration known, e.g. 2400ms video)
+      else {
+        const outroProgress = Math.max(0, Math.min(1, (timeMs - (totalDurationMs - outroDuration)) / outroDuration));
+        alpha = 1.0 - easeInCubic(outroProgress);
+      }
+
+      return {
+        alpha,
+        scale: 1.0,
+        originX: 0.5,
+        originY: 0.5,
+      };
+    },
+  },
+
+  gentle_zoom: {
+    id: 'gentle_zoom',
+    name: 'Gentle Zoom',
+    nameJa: 'ジェントルズーム',
+    type: 'intro',
+    durationMs: 700,
+    description: '作品全体が0.96から手前へ静かに前進する落ち着いた導入演出',
+    evaluate: (timeMs: number, totalDurationMs?: number): SceneMotionEvaluation => {
+      const introDuration = 700;
+      const outroDuration = 350;
+      const startScale = 0.96;
+
+      let scale = 1.0;
+
+      // Phase 1: Intro (0 -> 700ms): 0.96 -> 1.0
+      if (timeMs < introDuration) {
+        const p = Math.max(0, Math.min(1, timeMs / introDuration));
+        scale = startScale + (1.0 - startScale) * easeOutCubic(p);
+      }
+      // Phase 2: Steady display
+      else if (!totalDurationMs || timeMs < totalDurationMs - outroDuration) {
+        scale = 1.0;
+      }
+      // Phase 3: Outro ease back to startScale for seamless loop
+      else {
+        const outroProgress = Math.max(0, Math.min(1, (timeMs - (totalDurationMs - outroDuration)) / outroDuration));
+        scale = 1.0 - (1.0 - startScale) * easeInCubic(outroProgress);
+      }
+
+      return {
+        alpha: 1.0,
+        scale,
+        originX: 0.5,
+        originY: 0.5,
+      };
+    },
+  },
+
+  fade_and_zoom: {
+    id: 'fade_and_zoom',
+    name: 'Fade + Zoom',
+    nameJa: 'フェード ＋ ズーム',
+    type: 'intro',
+    durationMs: 700,
+    description: 'フェードインと緩やかなズームインを掛け合わせた複合演出',
+    evaluate: (timeMs: number, totalDurationMs?: number): SceneMotionEvaluation => {
+      const introDuration = 700;
+      const outroDuration = 350;
+      const startScale = 0.96;
+
+      let alpha = 1.0;
+      let scale = 1.0;
+
+      // Phase 1: Intro
+      if (timeMs < introDuration) {
+        const p = Math.max(0, Math.min(1, timeMs / introDuration));
+        alpha = easeOutCubic(p);
+        scale = startScale + (1.0 - startScale) * easeOutCubic(p);
+      }
+      // Phase 2: Steady
+      else if (!totalDurationMs || timeMs < totalDurationMs - outroDuration) {
+        alpha = 1.0;
+        scale = 1.0;
+      }
+      // Phase 3: Outro
+      else {
+        const outroProgress = Math.max(0, Math.min(1, (timeMs - (totalDurationMs - outroDuration)) / outroDuration));
+        alpha = 1.0 - easeInCubic(outroProgress);
+        scale = 1.0 - (1.0 - startScale) * easeInCubic(outroProgress);
+      }
+
+      return {
+        alpha,
+        scale,
+        originX: 0.5,
+        originY: 0.5,
+      };
+    },
+  },
+};
+
+export function getSceneMotionRecipe(id: SceneMotionId): SceneMotionRecipe {
+  return SCENE_MOTION_RECIPES[id] || SCENE_MOTION_RECIPES.none;
 }

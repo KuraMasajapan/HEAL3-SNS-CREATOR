@@ -73,8 +73,8 @@ export function hitTestStamp(
     const dy = (normY - stamp.y);
     const dist = Math.hypot(dx, dy * (aspectRatio >= 1 ? 1 : 1 / aspectRatio));
     
-    // Hit radius based on stamp scale
-    const hitRadius = stamp.scale * 0.65;
+    // Hit radius based on stamp scale (allow slightly larger bounding touch area for foreground items)
+    const hitRadius = stamp.scale * (stamp.isForeground ? 0.85 : 0.65);
     if (dist <= hitRadius) {
       return stamp;
     }

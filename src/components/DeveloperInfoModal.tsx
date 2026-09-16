@@ -8,7 +8,7 @@
 import { X, RefreshCw, Smartphone, Gauge, Film, CheckCircle, Cpu, AlertTriangle, Sliders, Check } from 'lucide-react';
 import { DeveloperInfoData } from '../engine/types.ts';
 import { PreferredExportMode } from '../engine/exporter.ts';
-import { ExportQuality, QUALITY_PRESETS } from '../engine/config.ts';
+import { calculateExportDimensions, ExportQuality, QUALITY_PRESETS } from '../engine/config.ts';
 
 interface DeveloperInfoModalProps {
   isOpen: boolean;
@@ -32,6 +32,9 @@ export default function DeveloperInfoModal({
   onRefreshMetrics,
 }: DeveloperInfoModalProps) {
   if (!isOpen) return null;
+
+  const currentExpected = calculateExportDimensions(devInfo.baseOriginalWidth, devInfo.baseOriginalHeight, 'current');
+  const highExpected = calculateExportDimensions(devInfo.baseOriginalWidth, devInfo.baseOriginalHeight, 'high');
 
   return (
     <div
@@ -146,7 +149,9 @@ export default function DeveloperInfoModal({
                   </span>
                   {exportQuality === 'current' && <Check className="w-3.5 h-3.5 text-sky-400" />}
                 </div>
-                <div className="text-[11px] font-semibold text-neutral-200">450 × 800 px</div>
+                <div className="text-[11px] font-semibold text-neutral-200">
+                  {currentExpected.width} × {currentExpected.height} px
+                </div>
                 <div className="text-[10px] text-sky-300 font-mono">3.0 Mbps (Bitrate)</div>
                 <div className="text-[9px] text-neutral-400 font-sans leading-tight">
                   既存の軽量・高速出力。実機負荷最小。
@@ -168,7 +173,9 @@ export default function DeveloperInfoModal({
                   </span>
                   {exportQuality === 'high' && <Check className="w-3.5 h-3.5 text-sky-400" />}
                 </div>
-                <div className="text-[11px] font-semibold text-neutral-200">720 × 1280 px</div>
+                <div className="text-[11px] font-semibold text-neutral-200">
+                  {highExpected.width} × {highExpected.height} px
+                </div>
                 <div className="text-[10px] text-emerald-400 font-mono">6.0 Mbps (Bitrate)</div>
                 <div className="text-[9px] text-neutral-400 font-sans leading-tight">
                   元画像サイズ維持。顔・文字が高精細。
@@ -210,6 +217,18 @@ export default function DeveloperInfoModal({
                 <span className="text-neutral-500 block text-[10px]">BASE Processed (PoC Cap)</span>
                 <span className="font-semibold text-neutral-200">
                   {devInfo.baseProcessedWidth} × {devInfo.baseProcessedHeight} px
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Scene Motion</span>
+                <span className="font-semibold text-indigo-300">
+                  {devInfo.sceneMotion || 'None'}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Foreground Items</span>
+                <span className="font-semibold text-sky-300">
+                  {devInfo.foregroundItemCount ?? 0} items
                 </span>
               </div>
               <div>
@@ -278,7 +297,7 @@ export default function DeveloperInfoModal({
               <div>
                 <span className="text-neutral-500 block text-[10px]">Export Quality</span>
                 <span className="font-semibold text-neutral-200">
-                  {devInfo.exportQuality === 'high' ? 'High (720×1280)' : 'Current (450×800)'}
+                  {devInfo.exportQuality === 'high' ? `High (${highExpected.width}×${highExpected.height})` : `Current (${currentExpected.width}×${currentExpected.height})`}
                 </span>
               </div>
               <div>
@@ -290,7 +309,13 @@ export default function DeveloperInfoModal({
               <div>
                 <span className="text-neutral-500 block text-[10px]">Output Resolution</span>
                 <span className="font-semibold text-neutral-200">
-                  {devInfo.outputResolution || '未実行'}
+                  {devInfo.outputResolution || `${calculateExportDimensions(devInfo.baseOriginalWidth, devInfo.baseOriginalHeight, exportQuality).width} × ${calculateExportDimensions(devInfo.baseOriginalWidth, devInfo.baseOriginalHeight, exportQuality).height} px (予定)`}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Scene Motion Applied</span>
+                <span className="font-semibold text-indigo-300">
+                  {devInfo.sceneMotion || 'None'}
                 </span>
               </div>
               <div>

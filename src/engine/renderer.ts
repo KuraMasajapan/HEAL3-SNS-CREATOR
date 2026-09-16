@@ -9,8 +9,8 @@
  * - Renders selection bounding indicator & transform hints
  */
 
-import { BaseImageState, StampItem } from './types.ts';
-import { getMotionRecipe } from './motion.ts';
+import { BaseImageState, SceneMotionId, StampItem } from './types.ts';
+import { getMotionRecipe, getSceneMotionRecipe } from './motion.ts';
 
 export interface RenderOptions {
   isInteractivePreview?: boolean;
@@ -180,6 +180,30 @@ export function renderStamp(
       ctx.stroke();
       break;
     }
+    case 'foreground_image': {
+      // Foreground cut-out Item (e.g. transparent avatar PNG)
+      if (stamp.imageElement && stamp.imageElement.complete && stamp.imageElement.naturalWidth > 0) {
+        const aspect = stamp.aspectRatio || (stamp.imageElement.naturalWidth / stamp.imageElement.naturalHeight);
+        // Base width on 2x renderRadius with aspect ratio preserved
+        let w = renderRadius * 2;
+        let h = renderRadius * 2;
+        if (aspect >= 1) {
+          h = w / aspect;
+        } else {
+          w = h * aspect;
+        }
+        ctx.drawImage(stamp.imageElement, -w / 2, -h / 2, w, h);
+      } else {
+        // Subtle placeholder badge if image is still decoding
+        drawCircleBadgePath(ctx, renderRadius * 0.7);
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+        ctx.fill();
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      break;
+    }
   }
 
   if (motionEval.glow > 0.05) {
@@ -253,12 +277,40 @@ export function renderScene(
   canvasWidth: number,
   canvasHeight: number,
   timeMs: number,
+  sceneMotionId: SceneMotionId = 'none',
+  totalDurationMs?: number,
   options: RenderOptions = {}
 ): void {
   // Clear canvas
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-  // Render Base Image
+  // Black background backdrop
+  ctx.fillStyle = '#0a0a0c';
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  // Evaluate deterministic Scene Motion Recipe
+  const sceneRecipe = getSceneMotionRecipe(sceneMotionId);
+  // If totalDurationMs is provided, loop timeMs within totalDurationMs so interactive preview loops seamlessly
+  const effectiveSceneTimeMs = totalDurationMs && totalDurationMs > 0 ? (timeMs % totalDurationMs) : timeMs;
+  const sceneEval = sceneRecipe.evaluate(effectiveSceneTimeMs, totalDurationMs);
+
+  ctx.save();
+
+  // Apply Scene Motion opacity
+  if (sceneEval.alpha < 0.999) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, sceneEval.alpha));
+  }
+
+  // Apply Scene Motion scale (centered at origin, default center 0.5, 0.5)
+  if (Math.abs(sceneEval.scale - 1.0) > 0.0005) {
+    const originPxX = sceneEval.originX * canvasWidth;
+    const originPxY = sceneEval.originY * canvasHeight;
+    ctx.translate(originPxX, originPxY);
+    ctx.scale(sceneEval.scale, sceneEval.scale);
+    ctx.translate(-originPxX, -originPxY);
+  }
+
+  // --- Layer 1: BASE Image ---
   if (baseImage.image && baseImage.isLoaded) {
     ctx.drawImage(baseImage.image, 0, 0, canvasWidth, canvasHeight);
   } else {
@@ -287,8 +339,10 @@ export function renderScene(
     }
   }
 
-  // Render stamps in order (layer: later added is on top)
+  // --- Layer 2: Stamps & Foreground Items in sequence ---
   for (const stamp of stamps) {
     renderStamp(ctx, stamp, canvasWidth, canvasHeight, timeMs, options);
   }
+
+  ctx.restore();
 }

@@ -10,10 +10,10 @@
  * maintaining 60fps animation playback on the user's screen.
  */
 
-import { BaseImageState, ExportResult, StampItem } from './types.ts';
+import { BaseImageState, ExportResult, SceneMotionId, StampItem } from './types.ts';
 import { renderScene } from './renderer.ts';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
-import { ExportQuality, POC_CONFIG, QUALITY_PRESETS } from './config.ts';
+import { calculateExportDimensions, ExportQuality, POC_CONFIG, QUALITY_PRESETS } from './config.ts';
 
 export type ExportProgressCallback = (percent: number, statusText: string) => void;
 
@@ -104,31 +104,16 @@ export function isCaptureStreamSupported(canvas: HTMLCanvasElement): boolean {
 export async function exportStillImage(
   baseImage: BaseImageState,
   stamps: StampItem[],
+  sceneMotionId: SceneMotionId = 'none',
   quality: ExportQuality = 'current',
   onProgress?: ExportProgressCallback
 ): Promise<ExportResult> {
   const startTime = performance.now();
   onProgress?.(20, '静止画をレンダリング中…');
 
-  const preset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.current;
-  const maxDim = preset.maxDimension;
-  const origW = baseImage.processedWidth || 720;
-  const origH = baseImage.processedHeight || 1280;
-  const aspect = origW / origH;
-
-  let width = origW;
-  let height = origH;
-  if (origW > maxDim || origH > maxDim) {
-    if (origW >= origH) {
-      width = maxDim;
-      height = Math.round(maxDim / aspect);
-    } else {
-      height = maxDim;
-      width = Math.round(maxDim * aspect);
-    }
-  }
-  width = Math.floor(width / 2) * 2;
-  height = Math.floor(height / 2) * 2;
+  const origW = baseImage.processedWidth || baseImage.originalWidth || 720;
+  const origH = baseImage.processedHeight || baseImage.originalHeight || 1280;
+  const { width, height } = calculateExportDimensions(origW, origH, quality);
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -138,8 +123,8 @@ export async function exportStillImage(
     throw new Error('Canvas 2Dコンテキストの作成に失敗しました');
   }
 
-  // Render at timestamp 0 with no interactive overlays
-  renderScene(ctx, baseImage, stamps, width, height, 0, {
+  // Render at timestamp 0 with deterministic Scene Motion
+  renderScene(ctx, baseImage, stamps, width, height, 0, sceneMotionId, undefined, {
     isInteractivePreview: false,
     selectedStampId: null,
   });
@@ -188,6 +173,7 @@ export async function exportStillImage(
 export async function exportAnimatedGif(
   baseImage: BaseImageState,
   stamps: StampItem[],
+  sceneMotionId: SceneMotionId = 'none',
   isFallback = false,
   fallbackReason?: string,
   quality: ExportQuality = 'current',
@@ -196,11 +182,11 @@ export async function exportAnimatedGif(
   const startTime = performance.now();
   onProgress?.(10, isFallback ? 'GIFフォールバックの準備中…' : 'アニメーションGIFの準備中…');
 
+  const origW = baseImage.processedWidth || baseImage.originalWidth || 720;
+  const origH = baseImage.processedHeight || baseImage.originalHeight || 1280;
+  // GIF uses GIF_EXPORT_MAX_DIMENSION cap
   const maxDim = POC_CONFIG.GIF_EXPORT_MAX_DIMENSION;
-  const origW = baseImage.processedWidth || 720;
-  const origH = baseImage.processedHeight || 1280;
   const aspect = origW / origH;
-
   let width = origW;
   let height = origH;
   if (origW > maxDim || origH > maxDim) {
@@ -212,10 +198,8 @@ export async function exportAnimatedGif(
       width = Math.round(maxDim * aspect);
     }
   }
-
-  // Force even dimensions
-  width = Math.floor(width / 2) * 2;
-  height = Math.floor(height / 2) * 2;
+  width = Math.max(2, Math.floor(width / 2) * 2);
+  height = Math.max(2, Math.floor(height / 2) * 2);
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -228,14 +212,15 @@ export async function exportAnimatedGif(
   const gif = GIFEncoder();
   const fps = POC_CONFIG.GIF_EXPORT_FPS;
   const durationSec = POC_CONFIG.VIDEO_DURATION_SEC;
+  const totalDurationMs = durationSec * 1000;
   const totalFrames = Math.round(fps * durationSec);
   const frameIntervalMs = 1000 / fps;
   const gifDelay = Math.round(frameIntervalMs / 10); // in hundredths of a second
 
   for (let f = 0; f < totalFrames; f++) {
     const timeMs = f * frameIntervalMs;
-    // Uses the EXACT SAME deterministic renderScene and motion equations
-    renderScene(ctx, baseImage, stamps, width, height, timeMs, {
+    // Uses the EXACT SAME deterministic renderScene, Scene Motion, and Item Motion
+    renderScene(ctx, baseImage, stamps, width, height, timeMs, sceneMotionId, totalDurationMs, {
       isInteractivePreview: false,
       selectedStampId: null,
     });
@@ -295,6 +280,7 @@ export async function exportVideoMediaRecorder(
   baseImage: BaseImageState,
   stamps: StampItem[],
   mimeType: string,
+  sceneMotionId: SceneMotionId = 'none',
   quality: ExportQuality = 'current',
   onProgress?: ExportProgressCallback
 ): Promise<ExportResult> {
@@ -302,27 +288,11 @@ export async function exportVideoMediaRecorder(
   onProgress?.(10, '動画エンコーダーを初期化中…');
 
   const preset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.current;
-  const maxDim = preset.maxDimension;
   const bitrate = preset.bitrate;
 
-  const origW = baseImage.processedWidth || 720;
-  const origH = baseImage.processedHeight || 1280;
-  const aspect = origW / origH;
-
-  let width = origW;
-  let height = origH;
-  if (origW > maxDim || origH > maxDim) {
-    if (origW >= origH) {
-      width = maxDim;
-      height = Math.round(maxDim / aspect);
-    } else {
-      height = maxDim;
-      width = Math.round(maxDim * aspect);
-    }
-  }
-  // Enforce even dimensions for H.264 / AVC video codecs
-  width = Math.floor(width / 2) * 2;
-  height = Math.floor(height / 2) * 2;
+  const origW = baseImage.processedWidth || baseImage.originalWidth || 720;
+  const origH = baseImage.processedHeight || baseImage.originalHeight || 1280;
+  const { width, height } = calculateExportDimensions(origW, origH, quality);
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -344,14 +314,16 @@ export async function exportVideoMediaRecorder(
       throw new Error('Canvas初期化失敗');
     }
 
+    const durationSec = POC_CONFIG.VIDEO_DURATION_SEC;
+    const totalDurationMs = durationSec * 1000;
+
     // Initial draw
-    renderScene(ctx, baseImage, stamps, width, height, 0, {
+    renderScene(ctx, baseImage, stamps, width, height, 0, sceneMotionId, totalDurationMs, {
       isInteractivePreview: false,
       selectedStampId: null,
     });
 
     const fps = POC_CONFIG.VIDEO_EXPORT_FPS;
-    const durationSec = POC_CONFIG.VIDEO_DURATION_SEC;
     const totalFrames = Math.round(fps * durationSec);
     const frameIntervalMs = 1000 / fps;
 
@@ -398,7 +370,7 @@ export async function exportVideoMediaRecorder(
     for (let f = 0; f < totalFrames; f++) {
       const timeMs = f * frameIntervalMs;
       // Uses the EXACT SAME deterministic renderScene and motion equations
-      renderScene(ctx, baseImage, stamps, width, height, timeMs, {
+      renderScene(ctx, baseImage, stamps, width, height, timeMs, sceneMotionId, totalDurationMs, {
         isInteractivePreview: false,
         selectedStampId: null,
       });
@@ -456,20 +428,21 @@ export async function exportVideoMediaRecorder(
 export async function exportArtwork(
   baseImage: BaseImageState,
   stamps: StampItem[],
+  sceneMotionId: SceneMotionId = 'none',
   mode: PreferredExportMode = 'auto',
   quality: ExportQuality = 'current',
   onProgress?: ExportProgressCallback
 ): Promise<ExportResult> {
-  const hasMotion = stamps.some((s) => s.motionId !== 'none');
+  const hasMotion = sceneMotionId !== 'none' || stamps.some((s) => s.motionId !== 'none');
 
   // Case 1: No motion -> Still image
   if (!hasMotion) {
-    return exportStillImage(baseImage, stamps, quality, onProgress);
+    return exportStillImage(baseImage, stamps, sceneMotionId, quality, onProgress);
   }
 
   // Case 2: Motion exists & user explicitly requested GIF
   if (mode === 'gif') {
-    return exportAnimatedGif(baseImage, stamps, false, undefined, quality, onProgress);
+    return exportAnimatedGif(baseImage, stamps, sceneMotionId, false, undefined, quality, onProgress);
   }
 
   const supportedMime = getSupportedVideoMimeType();
@@ -479,12 +452,12 @@ export async function exportArtwork(
   // If user requested video or auto, check if MediaRecorder is viable
   if (hasCaptureStream && supportedMime) {
     try {
-      return await exportVideoMediaRecorder(baseImage, stamps, supportedMime, quality, onProgress);
+      return await exportVideoMediaRecorder(baseImage, stamps, supportedMime, sceneMotionId, quality, onProgress);
     } catch (err: any) {
       const reason = `MediaRecorder失敗 [${supportedMime}]: ${err.message || String(err)}`;
       console.warn('MediaRecorder export failed, falling back to Animated GIF:', reason);
       onProgress?.(20, '動画記録に失敗したため、GIFフォールバックを実行します…');
-      return exportAnimatedGif(baseImage, stamps, true, reason, quality, onProgress);
+      return exportAnimatedGif(baseImage, stamps, sceneMotionId, true, reason, quality, onProgress);
     }
   }
 
@@ -493,5 +466,5 @@ export async function exportArtwork(
     ? 'ブラウザがcanvas.captureStreamをサポートしていません'
     : '利用可能な動画MIMEタイプ(MP4/WebM)が見つかりません';
   console.warn('Falling back to GIF:', reason);
-  return exportAnimatedGif(baseImage, stamps, true, reason, quality, onProgress);
+  return exportAnimatedGif(baseImage, stamps, sceneMotionId, true, reason, quality, onProgress);
 }

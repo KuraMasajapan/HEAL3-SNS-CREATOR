@@ -6,14 +6,16 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { BaseImageState, StampItem } from '../engine/types.ts';
+import { BaseImageState, SceneMotionId, StampItem } from '../engine/types.ts';
 import { renderScene } from '../engine/renderer.ts';
 import { createInitialGestureState, GestureState, hitTestRotateHandle, hitTestStamp } from '../engine/gestures.ts';
+import { POC_CONFIG } from '../engine/config.ts';
 
 interface CanvasStageProps {
   baseImage: BaseImageState;
   stamps: StampItem[];
   selectedStampId: string | null;
+  sceneMotionId: SceneMotionId;
   isFinishedMode: boolean;
   onSelectStamp: (id: string | null) => void;
   onUpdateStamp: (stamp: StampItem) => void;
@@ -25,6 +27,7 @@ export default function CanvasStage({
   baseImage,
   stamps,
   selectedStampId,
+  sceneMotionId,
   isFinishedMode,
   onSelectStamp,
   onUpdateStamp,
@@ -41,6 +44,14 @@ export default function CanvasStage({
 
   const selectedStampIdRef = useRef<string | null>(selectedStampId);
   selectedStampIdRef.current = selectedStampId;
+
+  const sceneMotionIdRef = useRef<SceneMotionId>(sceneMotionId);
+  sceneMotionIdRef.current = sceneMotionId;
+
+  const sceneMotionStartRef = useRef<number>(performance.now());
+  useEffect(() => {
+    sceneMotionStartRef.current = performance.now();
+  }, [sceneMotionId]);
 
   const isFinishedModeRef = useRef<boolean>(isFinishedMode);
   isFinishedModeRef.current = isFinishedMode;
@@ -107,12 +118,26 @@ export default function CanvasStage({
           const bufferW = canvas.width;
           const bufferH = canvas.height;
 
-          renderScene(ctx, baseImage, stampsRef.current, bufferW, bufferH, time, {
-            isInteractivePreview: !isFinishedModeRef.current,
-            selectedStampId: selectedStampIdRef.current,
-            activeManipulatingId: gestureStateRef.current.activeStampId,
-            dpr: displayMetrics.dpr,
-          });
+          const cycleDurationMs = POC_CONFIG.VIDEO_DURATION_SEC * 1000;
+          // Loop scene motion synchronously with export duration for seamless preview
+          const sceneTimeMs = (time - sceneMotionStartRef.current) % cycleDurationMs;
+
+          renderScene(
+            ctx,
+            baseImage,
+            stampsRef.current,
+            bufferW,
+            bufferH,
+            time,
+            sceneMotionIdRef.current,
+            cycleDurationMs,
+            {
+              isInteractivePreview: !isFinishedModeRef.current,
+              selectedStampId: selectedStampIdRef.current,
+              activeManipulatingId: gestureStateRef.current.activeStampId,
+              dpr: displayMetrics.dpr,
+            }
+          );
         }
       }
 
