@@ -5,7 +5,7 @@
  * and export technical diagnostics required by the PoC specification.
  */
 
-import { X, RefreshCw, Smartphone, Gauge, Film, CheckCircle, Cpu, AlertTriangle, Sliders, Check } from 'lucide-react';
+import { X, RefreshCw, Smartphone, Gauge, Film, CheckCircle, Cpu, AlertTriangle, Sliders, Check, Scissors } from 'lucide-react';
 import { DeveloperInfoData } from '../engine/types.ts';
 import { PreferredExportMode } from '../engine/exporter.ts';
 import { calculateExportDimensions, ExportQuality, QUALITY_PRESETS } from '../engine/config.ts';
@@ -241,6 +241,43 @@ export default function DeveloperInfoModal({
                 <span className="text-neutral-500 block text-[10px]">Coordinate System</span>
                 <span className="font-semibold text-emerald-300">
                   Normalized (0.0〜1.0)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Avatar Extraction Telemetry (PoC) */}
+          <div className="bg-neutral-950/70 border border-neutral-800/80 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between text-emerald-400 font-semibold text-[11px] uppercase tracking-wider font-sans">
+              <div className="flex items-center gap-1.5">
+                <Scissors className="w-3.5 h-3.5" />
+                <span>Avatar Extraction (PoC)</span>
+              </div>
+              <span className="text-[10px] text-zinc-500 font-mono">100% Client-side</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-neutral-300">
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Extraction Method</span>
+                <span className="font-semibold text-emerald-300">
+                  {devInfo.avatarExtractionMethod || 'Hybrid Adapter (HEAL3)'}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Model / Engine Size</span>
+                <span className="font-semibold text-neutral-200 font-mono">
+                  {devInfo.avatarModelSize || '0 MB (Pure TS Engine)'}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Extraction Latency</span>
+                <span className="font-semibold text-neutral-200">
+                  {devInfo.avatarExtractionTimeMs !== null ? `${devInfo.avatarExtractionTimeMs} ms` : '未実行'}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Foreground Resolution</span>
+                <span className="font-semibold text-neutral-200 font-mono">
+                  {devInfo.avatarForegroundResolution || '未生成'}
                 </span>
               </div>
             </div>

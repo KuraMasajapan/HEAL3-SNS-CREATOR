@@ -16,6 +16,8 @@ import Header from './components/Header.tsx';
 import Toolbar from './components/Toolbar.tsx';
 import FinishView from './components/FinishView.tsx';
 import DeveloperInfoModal from './components/DeveloperInfoModal.tsx';
+import { AvatarExtractModal } from './components/AvatarExtractModal.tsx';
+import { AvatarExtractionResult } from './engine/types.ts';
 
 // Initial sample stamps for instant live demonstration
 const INITIAL_STAMPS: StampItem[] = [
@@ -123,8 +125,15 @@ export default function App() {
       webCodecsH264Available: false,
       sceneMotion: SCENE_MOTION_RECIPES.none.nameJa,
       foregroundItemCount: 0,
+      avatarExtractionMethod: 'Hybrid Adapter (HEAL3)',
+      avatarExtractionTimeMs: null,
+      avatarForegroundResolution: null,
+      avatarModelSize: '0 MB (Pure TS Engine)',
     };
   });
+
+  // Avatar Extract Modal state
+  const [isAvatarExtractOpen, setIsAvatarExtractOpen] = useState(false);
 
   // Check WebCodecs capabilities, start viewport height synchronization & load initial preset image on mount
   useEffect(() => {
@@ -253,6 +262,41 @@ export default function App() {
     } catch (err: any) {
       alert(err.message || '透過画像の読み込みに失敗しました');
     }
+  };
+
+  // Avatar Extract PoC Handler - Converts extracted avatar into native Foreground Item
+  const handleApplyExtractedAvatar = (result: AvatarExtractionResult) => {
+    const newId = `avatar-ext-${Date.now()}`;
+    const newStamp: StampItem = {
+      id: newId,
+      type: 'foreground_image',
+      x: 0.50,
+      y: 0.50,
+      scale: 0.42, // Ergonomic default size on canvas
+      rotation: 0,
+      motionId: 'bounce', // Provide immediate energetic motion feedback
+      motionSpeed: 1.0,
+      motionOffsetMs: 0,
+      color: '#FFFFFF',
+      accentColor: '#FFFFFF',
+      isForeground: true,
+      imageUrl: result.dataUrl,
+      imageElement: result.imageElement,
+      aspectRatio: result.aspectRatio,
+    };
+
+    setStamps((prev) => [...prev, newStamp]);
+    setSelectedStampId(newId);
+
+    // Update real-time developer telemetry
+    setDevInfo((prev) => ({
+      ...prev,
+      foregroundItemCount: (prev.foregroundItemCount ?? 0) + 1,
+      avatarExtractionMethod: result.adapterName,
+      avatarExtractionTimeMs: result.extractionTimeMs,
+      avatarForegroundResolution: `${result.width} × ${result.height} px`,
+      avatarModelSize: result.modelSize,
+    }));
   };
 
   const handleUpdateStamp = (updated: StampItem) => {
@@ -400,6 +444,8 @@ export default function App() {
           stamps={stamps}
           selectedStamp={selectedStamp}
           sceneMotionId={sceneMotionId}
+          hasBaseImage={baseImage.isLoaded}
+          onOpenAvatarExtract={() => setIsAvatarExtractOpen(true)}
           onUpdateSceneMotion={(id) => {
             setSceneMotionId(id);
             setSceneMotionTrigger(Date.now());
@@ -426,6 +472,15 @@ export default function App() {
           exportError={exportError}
           onBackToEdit={() => setIsFinishedMode(false)}
           onRetryExport={runExport}
+        />
+      )}
+
+      {/* Avatar Extraction Modal (PoC) */}
+      {isAvatarExtractOpen && (
+        <AvatarExtractModal
+          baseImageState={baseImage}
+          onApplyExtractedAvatar={handleApplyExtractedAvatar}
+          onClose={() => setIsAvatarExtractOpen(false)}
         />
       )}
 

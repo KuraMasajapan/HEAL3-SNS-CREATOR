@@ -25,6 +25,24 @@ function easeInOutSine(x: number): number {
   return -(Math.cos(Math.PI * x) - 1) / 2;
 }
 
+function easeInOutCubic(x: number): number {
+  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+}
+
+/**
+ * Custom dramatic zoom easing:
+ * Begins with steady hold, accelerates dynamically through mid-flight,
+ * and decelerates with gentle settlement into the 100% frame.
+ */
+function easeDramaticZoom(x: number): number {
+  const p = Math.max(0, Math.min(1, x));
+  if (p < 0.35) {
+    return Math.pow(p / 0.35, 2.4) * 0.28;
+  }
+  const t = (p - 0.35) / 0.65;
+  return 0.28 + (1 - 0.28) * (1 - Math.pow(1 - t, 2.8));
+}
+
 /** Elastic overshoot ease out */
 function easeOutBack(x: number, c1 = 1.70158): number {
   const c3 = c1 + 1;
@@ -225,6 +243,10 @@ export function applySceneEasing(progress: number, easing: SceneEasingType, over
       return easeOutCubic(p);
     case 'easeInOutSine':
       return easeInOutSine(p);
+    case 'easeInOutCubic':
+      return easeInOutCubic(p);
+    case 'dramaticZoom':
+      return easeDramaticZoom(p);
     case 'easeOutBack':
     case 'overshoot':
       return easeOutBack(p, overshootFactor);
@@ -234,35 +256,70 @@ export function applySceneEasing(progress: number, easing: SceneEasingType, over
 }
 
 /**
- * Deterministically evaluates any Scene Motion based strictly on its 8 Recipe Parameters.
+ * Deterministically evaluates any Scene Motion based strictly on its Recipe Parameters + Poster Hold.
  * 
  * Timeline Architecture:
- * 1. timeMs < params.delay: returns initial 'from' state
- * 2. delay <= timeMs < delay + duration: interpolates from 'from' to 'to' via configured easing curve
- * 3. timeMs >= delay + duration: Scene Intro is complete -> returns steady normal 'to' state.
+ * 1. 0 <= timeMs < posterHoldMs: Poster Hold Phase
+ *    Displays full, complete artwork (scale=1, alpha=1, rot=0, offset=0).
+ *    Guarantees that the very first frame of the video will NEVER be pitch black or transparent,
+ *    eliminating the SNS thumbnail blackout issue.
  * 
- * Decoupled from Item Motion:
- * - Scene Intro handles the grand entrance of the whole canvas scene.
- * - When Scene Intro finishes, canvas scene holds steady at normal transform,
- *   while Item Motion (stamps / foreground) continues uninterrupted at 60 FPS.
- * - Shared identically between Preview Renderer and Export Renderer.
+ * 2. posterHoldMs <= timeMs < posterHoldMs + transitionDuration:
+ *    Micro-transition into the initial intro state (smoothly avoiding sudden pop).
+ * 
+ * 3. Intro Phase:
+ *    Interpolates from initial state to final state using configured easing curve.
+ * 
+ * 4. Steady Normal Scene (post-intro):
+ *    Scene intro is finished; canvas scene holds steady at standard transform,
+ *    while Foreground & Stamp Item Motion continues uninterrupted at 60 FPS.
+ * 
+ * Shared identically between Preview Renderer and Export Renderer.
  */
 export function evaluateSceneMotion(params: SceneMotionParams, timeMs: number): SceneMotionEvaluation {
-  // 1. Before intro start delay
-  if (timeMs < params.delay) {
+  const posterHold = Math.max(0, params.posterHoldMs || 0);
+  const transitionDuration = posterHold > 0 ? 140 : 0; // ms for seamless ease into intro initial state
+
+  // Phase 1: Poster Hold (Guarantee crisp thumbnail and preview of completed art)
+  if (timeMs < posterHold) {
     return {
-      alpha: Math.max(0, Math.min(1, params.opacity.from)),
-      scale: params.scale.from,
-      dx: params.x.from,
-      dy: params.y.from,
-      rotation: params.rotation.from,
+      alpha: 1.0,
+      scale: 1.0,
+      dx: 0.0,
+      dy: 0.0,
+      rotation: 0.0,
       originX: 0.5,
       originY: 0.5,
     };
   }
 
-  // 3. After intro completed -> Steady Normal Scene (identity transform)
-  if (params.duration <= 0 || timeMs >= params.delay + params.duration) {
+  // Phase 2: Micro-transition from Poster state (1.0) into Intro starting state (from)
+  if (transitionDuration > 0 && timeMs < posterHold + transitionDuration) {
+    const p = (timeMs - posterHold) / transitionDuration;
+    const easedP = easeInOutSine(p);
+
+    const targetAlpha = Math.max(0.12, params.opacity.from); // Prevent complete pitch black during transition
+    const alpha = 1.0 + (targetAlpha - 1.0) * easedP;
+    const scale = 1.0 + (params.scale.from - 1.0) * easedP;
+    const dx = 0.0 + (params.x.from - 0.0) * easedP;
+    const dy = 0.0 + (params.y.from - 0.0) * easedP;
+    const rotation = 0.0 + (params.rotation.from - 0.0) * easedP;
+
+    return {
+      alpha: Math.max(0, Math.min(1, alpha)),
+      scale,
+      dx,
+      dy,
+      rotation,
+      originX: 0.5,
+      originY: 0.5,
+    };
+  }
+
+  const introStartTime = posterHold + transitionDuration + Math.max(0, params.delay || 0);
+
+  // Phase 4: After intro completed -> Steady Normal Scene (identity transform)
+  if (params.duration <= 0 || timeMs >= introStartTime + params.duration) {
     return {
       alpha: Math.max(0, Math.min(1, params.opacity.to)),
       scale: params.scale.to,
@@ -274,10 +331,9 @@ export function evaluateSceneMotion(params: SceneMotionParams, timeMs: number): 
     };
   }
 
-  // 2. During intro transition
-  const linearProgress = (timeMs - params.delay) / params.duration;
+  // Phase 3: During intro transition
+  const linearProgress = (timeMs - introStartTime) / params.duration;
   const eased = applySceneEasing(linearProgress, params.easing, params.overshootFactor);
-  // Alpha uses smooth cubic ease-out capped at [0, 1] to avoid brightness flashing or clipping
   const alphaEased = Math.max(0, Math.min(1, easeOutCubic(linearProgress)));
 
   const alpha = params.opacity.from + (params.opacity.to - params.opacity.from) * alphaEased;
@@ -303,15 +359,16 @@ export function evaluateSceneMotion(params: SceneMotionParams, timeMs: number): 
  * Controls overall presentation of the entire canvas scene (BASE + Stamps + Foreground).
  * Completely decoupled from individual Item Motion recipes.
  * 
- * Every recipe defines all 8 core parameters independently:
- * 1. duration
- * 2. delay
- * 3. opacity
- * 4. scale
- * 5. x
- * 6. y
- * 7. rotation
- * 8. easing
+ * Every recipe defines all parameters independently:
+ * 1. posterHoldMs (prevents black thumbnail on SNS)
+ * 2. duration
+ * 3. delay
+ * 4. opacity
+ * 5. scale
+ * 6. x
+ * 7. y
+ * 8. rotation
+ * 9. easing
  */
 export const SCENE_MOTION_RECIPES: Record<SceneMotionId, SceneMotionRecipe> = {
   none: {
@@ -322,6 +379,7 @@ export const SCENE_MOTION_RECIPES: Record<SceneMotionId, SceneMotionRecipe> = {
     params: {
       duration: 0,
       delay: 0,
+      posterHoldMs: 0,
       opacity: { from: 1.0, to: 1.0 },
       scale: { from: 1.0, to: 1.0 },
       x: { from: 0.0, to: 0.0 },
@@ -341,17 +399,18 @@ export const SCENE_MOTION_RECIPES: Record<SceneMotionId, SceneMotionRecipe> = {
     nameJa: 'フェードイン',
     type: 'intro',
     params: {
-      duration: 1400, // 1.4秒 (ゆっくりと明確に現れる)
+      duration: 2200, // 2.2秒 (ゆったり優雅なシネマティック展開)
       delay: 0,
-      opacity: { from: 0.0, to: 1.0 },
+      posterHoldMs: 300, // 冒頭300ms完成ポスター保持 (黒サムネイル完全防止)
+      opacity: { from: 0.18, to: 1.0 }, // 完全黒(0.0)を回避
       scale: { from: 1.0, to: 1.0 },
       x: { from: 0.0, to: 0.0 },
       y: { from: 0.0, to: 0.0 },
       rotation: { from: 0.0, to: 0.0 },
       easing: 'easeOutCubic',
     },
-    durationMs: 1400,
-    description: '1.4秒かけて静かに浮かび上がるエレガントなフェード導入',
+    durationMs: 2200,
+    description: '冒頭サムネイル保護後、2.2秒かけて光が満ちるように浮き出るフェード',
     evaluate: (timeMs: number): SceneMotionEvaluation =>
       evaluateSceneMotion(SCENE_MOTION_RECIPES.fade_in.params, timeMs),
   },
@@ -362,17 +421,18 @@ export const SCENE_MOTION_RECIPES: Record<SceneMotionId, SceneMotionRecipe> = {
     nameJa: 'ズームイン',
     type: 'intro',
     params: {
-      duration: 1400, // 1.4秒
+      duration: 2400, // 2.4秒
       delay: 0,
+      posterHoldMs: 300, // 冒頭300ms完成ポスター保持
       opacity: { from: 1.0, to: 1.0 },
-      scale: { from: 0.88, to: 1.0 }, // 0.88 -> 1.00で実機でも明確に認識できる拡大
+      scale: { from: 0.82, to: 1.0 }, // 0.82 -> 1.00でゆったり前進
       x: { from: 0.0, to: 0.0 },
       y: { from: 0.0, to: 0.0 },
       rotation: { from: 0.0, to: 0.0 },
       easing: 'easeOutCubic',
     },
-    durationMs: 1400,
-    description: '0.88から1.00へ画面全体がスムーズに前進するズーム導入',
+    durationMs: 2400,
+    description: '冒頭ポスター確認後、0.82から2.4秒かけて大きく手前に前進するズーム',
     evaluate: (timeMs: number): SceneMotionEvaluation =>
       evaluateSceneMotion(SCENE_MOTION_RECIPES.gentle_zoom.params, timeMs),
   },
@@ -383,17 +443,18 @@ export const SCENE_MOTION_RECIPES: Record<SceneMotionId, SceneMotionRecipe> = {
     nameJa: 'フェード ＋ ズーム',
     type: 'intro',
     params: {
-      duration: 1400, // 1.4秒
+      duration: 2400, // 2.4秒
       delay: 0,
-      opacity: { from: 0.0, to: 1.0 },
-      scale: { from: 0.88, to: 1.0 },
+      posterHoldMs: 300,
+      opacity: { from: 0.20, to: 1.0 },
+      scale: { from: 0.82, to: 1.0 },
       x: { from: 0.0, to: 0.0 },
       y: { from: 0.0, to: 0.0 },
       rotation: { from: 0.0, to: 0.0 },
       easing: 'easeOutCubic',
     },
-    durationMs: 1400,
-    description: '透明度とスケール(0.88→1.0)が同時に変化するリッチな導入',
+    durationMs: 2400,
+    description: '透明度とスケール(0.82→1.0)が2.4秒かけて優雅に融合する演出',
     evaluate: (timeMs: number): SceneMotionEvaluation =>
       evaluateSceneMotion(SCENE_MOTION_RECIPES.fade_and_zoom.params, timeMs),
   },
@@ -404,20 +465,43 @@ export const SCENE_MOTION_RECIPES: Record<SceneMotionId, SceneMotionRecipe> = {
     nameJa: 'ドラマチック登場',
     type: 'intro',
     params: {
-      duration: 1500, // 約1.5秒
+      duration: 1800, // 1.8秒
       delay: 0,
-      opacity: { from: 0.0, to: 1.0 },
-      scale: { from: 0.85, to: 1.0 }, // 約0.85から
+      posterHoldMs: 300,
+      opacity: { from: 0.25, to: 1.0 },
+      scale: { from: 0.82, to: 1.0 },
       x: { from: 0.0, to: 0.0 },
-      y: { from: 0.07, to: 0.0 }, // Y方向に約7%下から浮上
-      rotation: { from: -3.5, to: 0.0 }, // -3.5度傾いた状態から整列
+      y: { from: 0.08, to: 0.0 }, // Y方向下方から浮上
+      rotation: { from: -4.0, to: 0.0 }, // 4度傾いた状態から水平へ
       easing: 'overshoot',
-      overshootFactor: 1.35, // 軽いオーバーシュートで自然に定着
+      overshootFactor: 1.35,
     },
-    durationMs: 1500,
-    description: 'スケール0.85・下方・傾きから1.5秒かけてバウンス着地する強い導入演出',
+    durationMs: 1800,
+    description: '傾き・下方・スケール0.82から1.8秒かけてバウンス着地する強い演出',
     evaluate: (timeMs: number): SceneMotionEvaluation =>
       evaluateSceneMotion(SCENE_MOTION_RECIPES.dramatic_entrance.params, timeMs),
+  },
+
+  slow_dramatic_zoom: {
+    id: 'slow_dramatic_zoom',
+    name: 'Slow Dramatic Zoom',
+    nameJa: '超拡大ズーム',
+    type: 'intro',
+    params: {
+      duration: 3200, // 約3.2秒かけてゆっくり拡大
+      delay: 0,
+      posterHoldMs: 350, // 冒頭350msは全体像ポスター表示
+      opacity: { from: 1.0, to: 1.0 }, // 黒画面にせず常に可視
+      scale: { from: 0.15, to: 1.0 }, // 最小スケール0.15から極限拡大！
+      x: { from: 0.0, to: 0.0 },
+      y: { from: 0.0, to: 0.0 },
+      rotation: { from: 0.0, to: 0.0 },
+      easing: 'dramaticZoom', // 途中で加速し、最後は滑らかに着地
+    },
+    durationMs: 3200,
+    description: '全体像提示後、スケール0.15の遠景から3.2秒かけてダイナミックに加速・着地',
+    evaluate: (timeMs: number): SceneMotionEvaluation =>
+      evaluateSceneMotion(SCENE_MOTION_RECIPES.slow_dramatic_zoom.params, timeMs),
   },
 };
 

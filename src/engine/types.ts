@@ -9,7 +9,7 @@ export type MotionId = 'none' | 'bounce' | 'rotate' | 'pulse';
 /**
  * Scene Motion IDs (Controls the entire artwork presentation, distinct from Item Motion)
  */
-export type SceneMotionId = 'none' | 'fade_in' | 'gentle_zoom' | 'fade_and_zoom' | 'dramatic_entrance';
+export type SceneMotionId = 'none' | 'fade_in' | 'gentle_zoom' | 'fade_and_zoom' | 'dramatic_entrance' | 'slow_dramatic_zoom';
 
 export type SceneMotionType = 'intro' | 'loop';
 
@@ -18,17 +18,25 @@ export type SceneEasingType =
   | 'easeOutQuad'
   | 'easeOutCubic'
   | 'easeInOutSine'
+  | 'easeInOutCubic'
   | 'easeOutBack'
-  | 'overshoot';
+  | 'overshoot'
+  | 'dramaticZoom';
 
 /**
- * 8 Core Independent Parameters for Scene Motion Recipes
+ * 8 Core Independent Parameters for Scene Motion Recipes + Poster Hold
  */
 export interface SceneMotionParams {
-  /** Duration of the intro in milliseconds (e.g. 1500) */
+  /** Duration of the intro in milliseconds (e.g. 1500, 3000) */
   duration: number;
   /** Delay before intro starts in milliseconds (e.g. 0) */
   delay: number;
+  /**
+   * Poster Hold duration in milliseconds (e.g. 200 - 400ms).
+   * Displays the final complete artwork at 100% (opacity: 1, scale: 1, rot: 0)
+   * at the very beginning of the video to guarantee non-black thumbnail capture on SNS.
+   */
+  posterHoldMs: number;
   /** Opacity transition [start, end] (0.0 = transparent, 1.0 = fully opaque) */
   opacity: { from: number; to: number };
   /** Scale transition [start, end] (1.0 = standard canvas scale) */
@@ -193,4 +201,49 @@ export interface DeveloperInfoData {
   gifFallbackReason: string | null;
   webCodecsAvailable: boolean;
   webCodecsH264Available: boolean;
+  // Avatar Extraction telemetry
+  avatarExtractionMethod: string;
+  avatarExtractionTimeMs: number | null;
+  avatarForegroundResolution: string | null;
+  avatarModelSize: string;
+}
+
+/**
+ * HEAL3 Avatar Adapter Definition Interface.
+ * Allows modular registration of character body types, proportions,
+ * and adaptive extraction logic without hardcoding inside the core engine.
+ * Third parties can submit PRs with new avatar definitions.
+ */
+export interface AvatarAdapterDefinition {
+  id: string;
+  name: string;
+  nameJa: string;
+  descriptionJa: string;
+  /** Estimated body center point (normalized 0.0 - 1.0) */
+  defaultCenter: { x: number; y: number };
+  /** Body bounding box proposal (normalized relative to image dimensions) */
+  defaultBox: { width: number; height: number };
+  /** Edge detection sensitivity / tolerance (0.0 - 1.0) */
+  edgeTolerance: number;
+  /** Edge feathering radius in pixels */
+  featherRadius: number;
+}
+
+export interface AvatarExtractionOptions {
+  adapterId: string;
+  /** User tap / focus coordinate in normalized coordinates [0, 1] */
+  focusPoint?: { x: number; y: number };
+  /** Edge tolerance multiplier (0.5 to 2.0, default 1.0) */
+  toleranceMultiplier?: number;
+}
+
+export interface AvatarExtractionResult {
+  dataUrl: string;
+  imageElement: HTMLImageElement;
+  width: number;
+  height: number;
+  aspectRatio: number;
+  extractionTimeMs: number;
+  adapterName: string;
+  modelSize: string;
 }

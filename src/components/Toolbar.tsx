@@ -9,7 +9,7 @@
  */
 
 import React, { useRef } from 'react';
-import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors } from 'lucide-react';
 import { MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
 import { MOTION_RECIPES, SCENE_MOTION_RECIPES } from '../engine/motion.ts';
 
@@ -17,6 +17,8 @@ interface ToolbarProps {
   stamps: StampItem[];
   selectedStamp: StampItem | null;
   sceneMotionId: SceneMotionId;
+  hasBaseImage?: boolean;
+  onOpenAvatarExtract?: () => void;
   onUpdateSceneMotion: (sceneMotionId: SceneMotionId) => void;
   onAddStamp: (type: StampType) => void;
   onAddForegroundSample: () => void;
@@ -41,6 +43,8 @@ export default function Toolbar({
   stamps,
   selectedStamp,
   sceneMotionId,
+  hasBaseImage,
+  onOpenAvatarExtract,
   onUpdateSceneMotion,
   onAddStamp,
   onAddForegroundSample,
@@ -300,14 +304,26 @@ export default function Toolbar({
             {/* Foreground Avatar PoC Adders */}
             <div className="h-4 w-px bg-neutral-800 mx-0.5 flex-shrink-0" />
 
+            {hasBaseImage && onOpenAvatarExtract && (
+              <button
+                id="btn-extract-avatar"
+                onClick={onOpenAvatarExtract}
+                className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-emerald-500/25 hover:bg-emerald-500/35 text-emerald-300 border border-emerald-500/50 transition active:scale-95 flex-shrink-0 shadow-sm shadow-emerald-500/10"
+                title="BASE画像内のアバターを切り抜いて前景Item化"
+              >
+                <Scissors className="w-3.5 h-3.5 text-emerald-400" />
+                <span>✂️ アバター切り抜き</span>
+              </button>
+            )}
+
             <button
               id="btn-add-sample-avatar"
               onClick={onAddForegroundSample}
-              className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 transition active:scale-95 flex-shrink-0 shadow-sm shadow-indigo-500/10"
+              className="flex items-center gap-1 text-xs font-medium px-2 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 transition active:scale-95 flex-shrink-0"
               title="切り抜きアバターのPoCサンプルを追加"
             >
               <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
-              <span>⚡ 前景アバター</span>
+              <span>サンプルアバター</span>
             </button>
 
             <button
