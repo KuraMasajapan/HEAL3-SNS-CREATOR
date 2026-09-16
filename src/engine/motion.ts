@@ -6,7 +6,7 @@
  * acceleration, overshoot, and lingering settlement for natural aesthetics.
  */
 
-import { MotionEvaluation, MotionId, MotionRecipe, SceneMotionEvaluation, SceneMotionId, SceneMotionRecipe } from './types.ts';
+import { MotionEvaluation, MotionId, MotionRecipe, SceneEasingType, SceneMotionEvaluation, SceneMotionId, SceneMotionParams, SceneMotionRecipe } from './types.ts';
 
 // Easing functions
 function easeOutQuad(x: number): number {
@@ -212,14 +212,106 @@ export function getMotionRecipe(id: MotionId): MotionRecipe {
 }
 
 /**
+ * Resolves progress [0, 1] using the specified SceneEasingType.
+ */
+export function applySceneEasing(progress: number, easing: SceneEasingType, overshootFactor = 1.35): number {
+  const p = Math.max(0, Math.min(1, progress));
+  switch (easing) {
+    case 'linear':
+      return p;
+    case 'easeOutQuad':
+      return easeOutQuad(p);
+    case 'easeOutCubic':
+      return easeOutCubic(p);
+    case 'easeInOutSine':
+      return easeInOutSine(p);
+    case 'easeOutBack':
+    case 'overshoot':
+      return easeOutBack(p, overshootFactor);
+    default:
+      return easeOutCubic(p);
+  }
+}
+
+/**
+ * Deterministically evaluates any Scene Motion based strictly on its 8 Recipe Parameters.
+ * 
+ * Timeline Architecture:
+ * 1. timeMs < params.delay: returns initial 'from' state
+ * 2. delay <= timeMs < delay + duration: interpolates from 'from' to 'to' via configured easing curve
+ * 3. timeMs >= delay + duration: Scene Intro is complete -> returns steady normal 'to' state.
+ * 
+ * Decoupled from Item Motion:
+ * - Scene Intro handles the grand entrance of the whole canvas scene.
+ * - When Scene Intro finishes, canvas scene holds steady at normal transform,
+ *   while Item Motion (stamps / foreground) continues uninterrupted at 60 FPS.
+ * - Shared identically between Preview Renderer and Export Renderer.
+ */
+export function evaluateSceneMotion(params: SceneMotionParams, timeMs: number): SceneMotionEvaluation {
+  // 1. Before intro start delay
+  if (timeMs < params.delay) {
+    return {
+      alpha: Math.max(0, Math.min(1, params.opacity.from)),
+      scale: params.scale.from,
+      dx: params.x.from,
+      dy: params.y.from,
+      rotation: params.rotation.from,
+      originX: 0.5,
+      originY: 0.5,
+    };
+  }
+
+  // 3. After intro completed -> Steady Normal Scene (identity transform)
+  if (params.duration <= 0 || timeMs >= params.delay + params.duration) {
+    return {
+      alpha: Math.max(0, Math.min(1, params.opacity.to)),
+      scale: params.scale.to,
+      dx: params.x.to,
+      dy: params.y.to,
+      rotation: params.rotation.to,
+      originX: 0.5,
+      originY: 0.5,
+    };
+  }
+
+  // 2. During intro transition
+  const linearProgress = (timeMs - params.delay) / params.duration;
+  const eased = applySceneEasing(linearProgress, params.easing, params.overshootFactor);
+  // Alpha uses smooth cubic ease-out capped at [0, 1] to avoid brightness flashing or clipping
+  const alphaEased = Math.max(0, Math.min(1, easeOutCubic(linearProgress)));
+
+  const alpha = params.opacity.from + (params.opacity.to - params.opacity.from) * alphaEased;
+  const scale = params.scale.from + (params.scale.to - params.scale.from) * eased;
+  const dx = params.x.from + (params.x.to - params.x.from) * eased;
+  const dy = params.y.from + (params.y.to - params.y.from) * eased;
+  const rotation = params.rotation.from + (params.rotation.to - params.rotation.from) * eased;
+
+  return {
+    alpha: Math.max(0, Math.min(1, alpha)),
+    scale,
+    dx,
+    dy,
+    rotation,
+    originX: 0.5,
+    originY: 0.5,
+  };
+}
+
+/**
  * SCENE MOTION RECIPES
  * 
  * Controls overall presentation of the entire canvas scene (BASE + Stamps + Foreground).
  * Completely decoupled from individual Item Motion recipes.
  * 
- * - Intro Duration: 650ms - 700ms for natural visual emergence
- * - Outro Transition (when totalDurationMs is provided): smooth ease-back in the final 350ms
- *   so video loops seamlessly on Instagram/Discord without an abrupt pop.
+ * Every recipe defines all 8 core parameters independently:
+ * 1. duration
+ * 2. delay
+ * 3. opacity
+ * 4. scale
+ * 5. x
+ * 6. y
+ * 7. rotation
+ * 8. easing
  */
 export const SCENE_MOTION_RECIPES: Record<SceneMotionId, SceneMotionRecipe> = {
   none: {
@@ -227,14 +319,20 @@ export const SCENE_MOTION_RECIPES: Record<SceneMotionId, SceneMotionRecipe> = {
     name: 'None',
     nameJa: 'なし',
     type: 'loop',
+    params: {
+      duration: 0,
+      delay: 0,
+      opacity: { from: 1.0, to: 1.0 },
+      scale: { from: 1.0, to: 1.0 },
+      x: { from: 0.0, to: 0.0 },
+      y: { from: 0.0, to: 0.0 },
+      rotation: { from: 0.0, to: 0.0 },
+      easing: 'linear',
+    },
     durationMs: 0,
     description: '通常表示（Scene Motion なし）',
-    evaluate: (): SceneMotionEvaluation => ({
-      alpha: 1.0,
-      scale: 1.0,
-      originX: 0.5,
-      originY: 0.5,
-    }),
+    evaluate: (timeMs: number): SceneMotionEvaluation =>
+      evaluateSceneMotion(SCENE_MOTION_RECIPES.none.params, timeMs),
   },
 
   fade_in: {
@@ -242,74 +340,41 @@ export const SCENE_MOTION_RECIPES: Record<SceneMotionId, SceneMotionRecipe> = {
     name: 'Fade In',
     nameJa: 'フェードイン',
     type: 'intro',
-    durationMs: 650,
-    description: '0msから滑らかに浮き出る品のあるシネマティック導入演出',
-    evaluate: (timeMs: number, totalDurationMs?: number): SceneMotionEvaluation => {
-      const introDuration = 650;
-      const outroDuration = 350;
-
-      let alpha = 1.0;
-
-      // Phase 1: Intro (0 -> 650ms): Smooth cubic ease-in
-      if (timeMs < introDuration) {
-        const p = Math.max(0, Math.min(1, timeMs / introDuration));
-        alpha = easeOutCubic(p);
-      }
-      // Phase 2: Steady display (650ms -> end - 350ms)
-      else if (!totalDurationMs || timeMs < totalDurationMs - outroDuration) {
-        alpha = 1.0;
-      }
-      // Phase 3: Outro transition for seamless looping (if total duration known, e.g. 2400ms video)
-      else {
-        const outroProgress = Math.max(0, Math.min(1, (timeMs - (totalDurationMs - outroDuration)) / outroDuration));
-        alpha = 1.0 - easeInCubic(outroProgress);
-      }
-
-      return {
-        alpha,
-        scale: 1.0,
-        originX: 0.5,
-        originY: 0.5,
-      };
+    params: {
+      duration: 1400, // 1.4秒 (ゆっくりと明確に現れる)
+      delay: 0,
+      opacity: { from: 0.0, to: 1.0 },
+      scale: { from: 1.0, to: 1.0 },
+      x: { from: 0.0, to: 0.0 },
+      y: { from: 0.0, to: 0.0 },
+      rotation: { from: 0.0, to: 0.0 },
+      easing: 'easeOutCubic',
     },
+    durationMs: 1400,
+    description: '1.4秒かけて静かに浮かび上がるエレガントなフェード導入',
+    evaluate: (timeMs: number): SceneMotionEvaluation =>
+      evaluateSceneMotion(SCENE_MOTION_RECIPES.fade_in.params, timeMs),
   },
 
   gentle_zoom: {
     id: 'gentle_zoom',
     name: 'Gentle Zoom',
-    nameJa: 'ジェントルズーム',
+    nameJa: 'ズームイン',
     type: 'intro',
-    durationMs: 700,
-    description: '作品全体が0.96から手前へ静かに前進する落ち着いた導入演出',
-    evaluate: (timeMs: number, totalDurationMs?: number): SceneMotionEvaluation => {
-      const introDuration = 700;
-      const outroDuration = 350;
-      const startScale = 0.96;
-
-      let scale = 1.0;
-
-      // Phase 1: Intro (0 -> 700ms): 0.96 -> 1.0
-      if (timeMs < introDuration) {
-        const p = Math.max(0, Math.min(1, timeMs / introDuration));
-        scale = startScale + (1.0 - startScale) * easeOutCubic(p);
-      }
-      // Phase 2: Steady display
-      else if (!totalDurationMs || timeMs < totalDurationMs - outroDuration) {
-        scale = 1.0;
-      }
-      // Phase 3: Outro ease back to startScale for seamless loop
-      else {
-        const outroProgress = Math.max(0, Math.min(1, (timeMs - (totalDurationMs - outroDuration)) / outroDuration));
-        scale = 1.0 - (1.0 - startScale) * easeInCubic(outroProgress);
-      }
-
-      return {
-        alpha: 1.0,
-        scale,
-        originX: 0.5,
-        originY: 0.5,
-      };
+    params: {
+      duration: 1400, // 1.4秒
+      delay: 0,
+      opacity: { from: 1.0, to: 1.0 },
+      scale: { from: 0.88, to: 1.0 }, // 0.88 -> 1.00で実機でも明確に認識できる拡大
+      x: { from: 0.0, to: 0.0 },
+      y: { from: 0.0, to: 0.0 },
+      rotation: { from: 0.0, to: 0.0 },
+      easing: 'easeOutCubic',
     },
+    durationMs: 1400,
+    description: '0.88から1.00へ画面全体がスムーズに前進するズーム導入',
+    evaluate: (timeMs: number): SceneMotionEvaluation =>
+      evaluateSceneMotion(SCENE_MOTION_RECIPES.gentle_zoom.params, timeMs),
   },
 
   fade_and_zoom: {
@@ -317,41 +382,42 @@ export const SCENE_MOTION_RECIPES: Record<SceneMotionId, SceneMotionRecipe> = {
     name: 'Fade + Zoom',
     nameJa: 'フェード ＋ ズーム',
     type: 'intro',
-    durationMs: 700,
-    description: 'フェードインと緩やかなズームインを掛け合わせた複合演出',
-    evaluate: (timeMs: number, totalDurationMs?: number): SceneMotionEvaluation => {
-      const introDuration = 700;
-      const outroDuration = 350;
-      const startScale = 0.96;
-
-      let alpha = 1.0;
-      let scale = 1.0;
-
-      // Phase 1: Intro
-      if (timeMs < introDuration) {
-        const p = Math.max(0, Math.min(1, timeMs / introDuration));
-        alpha = easeOutCubic(p);
-        scale = startScale + (1.0 - startScale) * easeOutCubic(p);
-      }
-      // Phase 2: Steady
-      else if (!totalDurationMs || timeMs < totalDurationMs - outroDuration) {
-        alpha = 1.0;
-        scale = 1.0;
-      }
-      // Phase 3: Outro
-      else {
-        const outroProgress = Math.max(0, Math.min(1, (timeMs - (totalDurationMs - outroDuration)) / outroDuration));
-        alpha = 1.0 - easeInCubic(outroProgress);
-        scale = 1.0 - (1.0 - startScale) * easeInCubic(outroProgress);
-      }
-
-      return {
-        alpha,
-        scale,
-        originX: 0.5,
-        originY: 0.5,
-      };
+    params: {
+      duration: 1400, // 1.4秒
+      delay: 0,
+      opacity: { from: 0.0, to: 1.0 },
+      scale: { from: 0.88, to: 1.0 },
+      x: { from: 0.0, to: 0.0 },
+      y: { from: 0.0, to: 0.0 },
+      rotation: { from: 0.0, to: 0.0 },
+      easing: 'easeOutCubic',
     },
+    durationMs: 1400,
+    description: '透明度とスケール(0.88→1.0)が同時に変化するリッチな導入',
+    evaluate: (timeMs: number): SceneMotionEvaluation =>
+      evaluateSceneMotion(SCENE_MOTION_RECIPES.fade_and_zoom.params, timeMs),
+  },
+
+  dramatic_entrance: {
+    id: 'dramatic_entrance',
+    name: 'Dramatic Entrance',
+    nameJa: 'ドラマチック登場',
+    type: 'intro',
+    params: {
+      duration: 1500, // 約1.5秒
+      delay: 0,
+      opacity: { from: 0.0, to: 1.0 },
+      scale: { from: 0.85, to: 1.0 }, // 約0.85から
+      x: { from: 0.0, to: 0.0 },
+      y: { from: 0.07, to: 0.0 }, // Y方向に約7%下から浮上
+      rotation: { from: -3.5, to: 0.0 }, // -3.5度傾いた状態から整列
+      easing: 'overshoot',
+      overshootFactor: 1.35, // 軽いオーバーシュートで自然に定着
+    },
+    durationMs: 1500,
+    description: 'スケール0.85・下方・傾きから1.5秒かけてバウンス着地する強い導入演出',
+    evaluate: (timeMs: number): SceneMotionEvaluation =>
+      evaluateSceneMotion(SCENE_MOTION_RECIPES.dramatic_entrance.params, timeMs),
   },
 };
 

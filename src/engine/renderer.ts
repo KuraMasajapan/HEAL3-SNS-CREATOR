@@ -279,7 +279,8 @@ export function renderScene(
   timeMs: number,
   sceneMotionId: SceneMotionId = 'none',
   totalDurationMs?: number,
-  options: RenderOptions = {}
+  options: RenderOptions = {},
+  sceneTimeMs?: number
 ): void {
   // Clear canvas
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -288,10 +289,9 @@ export function renderScene(
   ctx.fillStyle = '#0a0a0c';
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-  // Evaluate deterministic Scene Motion Recipe
+  // Evaluate deterministic Scene Motion Recipe (uses sceneTimeMs if provided, else timeMs)
   const sceneRecipe = getSceneMotionRecipe(sceneMotionId);
-  // If totalDurationMs is provided, loop timeMs within totalDurationMs so interactive preview loops seamlessly
-  const effectiveSceneTimeMs = totalDurationMs && totalDurationMs > 0 ? (timeMs % totalDurationMs) : timeMs;
+  const effectiveSceneTimeMs = sceneTimeMs !== undefined ? sceneTimeMs : timeMs;
   const sceneEval = sceneRecipe.evaluate(effectiveSceneTimeMs, totalDurationMs);
 
   ctx.save();
@@ -301,14 +301,24 @@ export function renderScene(
     ctx.globalAlpha = Math.max(0, Math.min(1, sceneEval.alpha));
   }
 
-  // Apply Scene Motion scale (centered at origin, default center 0.5, 0.5)
-  if (Math.abs(sceneEval.scale - 1.0) > 0.0005) {
-    const originPxX = sceneEval.originX * canvasWidth;
-    const originPxY = sceneEval.originY * canvasHeight;
-    ctx.translate(originPxX, originPxY);
-    ctx.scale(sceneEval.scale, sceneEval.scale);
-    ctx.translate(-originPxX, -originPxY);
+  // Apply Scene Motion Transforms (Translation, Rotation, Scale around transform origin)
+  // Completely driven by Recipe evaluation - ZERO values hardcoded in Renderer
+  const originPxX = sceneEval.originX * canvasWidth;
+  const originPxY = sceneEval.originY * canvasHeight;
+  const shiftPxX = sceneEval.dx * canvasWidth;
+  const shiftPxY = sceneEval.dy * canvasHeight;
+
+  ctx.translate(originPxX + shiftPxX, originPxY + shiftPxY);
+
+  if (Math.abs(sceneEval.rotation) > 0.001) {
+    ctx.rotate((sceneEval.rotation * Math.PI) / 180);
   }
+
+  if (Math.abs(sceneEval.scale - 1.0) > 0.0005) {
+    ctx.scale(sceneEval.scale, sceneEval.scale);
+  }
+
+  ctx.translate(-originPxX, -originPxY);
 
   // --- Layer 1: BASE Image ---
   if (baseImage.image && baseImage.isLoaded) {

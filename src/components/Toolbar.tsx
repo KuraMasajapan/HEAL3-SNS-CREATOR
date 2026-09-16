@@ -105,6 +105,18 @@ export default function Toolbar({
             </button>
           );
         })}
+
+        {sceneMotionId !== 'none' && (
+          <button
+            id="scene-motion-replay-btn"
+            onClick={() => onUpdateSceneMotion(sceneMotionId)}
+            title="Scene Introを再生"
+            className="text-[11px] font-medium px-2 py-1 rounded-lg border border-indigo-500/40 bg-indigo-950/40 text-indigo-300 hover:bg-indigo-900/50 transition active:scale-95 flex items-center gap-1 flex-shrink-0"
+          >
+            <RotateCcw className="w-3 h-3" />
+            <span>再生</span>
+          </button>
+        )}
       </div>
 
       {/* If an item is selected, show item-specific properties */}

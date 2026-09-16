@@ -59,8 +59,9 @@ export default function App() {
     isLoaded: false,
   });
 
-  // Scene Motion state (None, Fade In, Gentle Zoom, Fade + Zoom)
+  // Scene Motion state (None, Fade In, Gentle Zoom, Fade + Zoom, Dramatic Entrance)
   const [sceneMotionId, setSceneMotionId] = useState<SceneMotionId>('none');
+  const [sceneMotionTrigger, setSceneMotionTrigger] = useState<number>(0);
 
   // Stamps & Foreground Items collection (normalized coordinates)
   const [stamps, setStamps] = useState<StampItem[]>(INITIAL_STAMPS);
@@ -384,6 +385,7 @@ export default function App() {
           stamps={stamps}
           selectedStampId={selectedStampId}
           sceneMotionId={sceneMotionId}
+          sceneMotionTrigger={sceneMotionTrigger}
           isFinishedMode={isFinishedMode}
           onSelectStamp={setSelectedStampId}
           onUpdateStamp={handleUpdateStamp}
@@ -400,6 +402,7 @@ export default function App() {
           sceneMotionId={sceneMotionId}
           onUpdateSceneMotion={(id) => {
             setSceneMotionId(id);
+            setSceneMotionTrigger(Date.now());
             setDevInfo((prev) => ({
               ...prev,
               sceneMotion: SCENE_MOTION_RECIPES[id]?.nameJa || 'なし',

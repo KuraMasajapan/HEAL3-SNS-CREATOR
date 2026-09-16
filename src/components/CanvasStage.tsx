@@ -16,6 +16,7 @@ interface CanvasStageProps {
   stamps: StampItem[];
   selectedStampId: string | null;
   sceneMotionId: SceneMotionId;
+  sceneMotionTrigger?: number;
   isFinishedMode: boolean;
   onSelectStamp: (id: string | null) => void;
   onUpdateStamp: (stamp: StampItem) => void;
@@ -28,6 +29,7 @@ export default function CanvasStage({
   stamps,
   selectedStampId,
   sceneMotionId,
+  sceneMotionTrigger,
   isFinishedMode,
   onSelectStamp,
   onUpdateStamp,
@@ -51,7 +53,7 @@ export default function CanvasStage({
   const sceneMotionStartRef = useRef<number>(performance.now());
   useEffect(() => {
     sceneMotionStartRef.current = performance.now();
-  }, [sceneMotionId]);
+  }, [sceneMotionId, sceneMotionTrigger]);
 
   const isFinishedModeRef = useRef<boolean>(isFinishedMode);
   isFinishedModeRef.current = isFinishedMode;
@@ -135,8 +137,8 @@ export default function CanvasStage({
           const bufferH = canvas.height;
 
           const cycleDurationMs = POC_CONFIG.VIDEO_DURATION_SEC * 1000;
-          // Loop scene motion synchronously with export duration for seamless preview
-          const sceneTimeMs = (time - sceneMotionStartRef.current) % cycleDurationMs;
+          // Scene Intro time calculation: elapsed ms since intro started or was replayed
+          const sceneElapsedMs = Math.max(0, time - sceneMotionStartRef.current);
 
           renderScene(
             ctx,
@@ -144,7 +146,7 @@ export default function CanvasStage({
             stampsRef.current,
             bufferW,
             bufferH,
-            time,
+            time, // Item Motion continues with continuous monotonic time `time`!
             sceneMotionIdRef.current,
             cycleDurationMs,
             {
@@ -152,7 +154,8 @@ export default function CanvasStage({
               selectedStampId: selectedStampIdRef.current,
               activeManipulatingId: gestureStateRef.current.activeStampId,
               dpr: displayMetrics.dpr,
-            }
+            },
+            sceneElapsedMs
           );
         }
       }
