@@ -125,10 +125,15 @@ export default function App() {
       webCodecsH264Available: false,
       sceneMotion: SCENE_MOTION_RECIPES.none.nameJa,
       foregroundItemCount: 0,
-      avatarExtractionMethod: 'Hybrid Adapter (HEAL3)',
+      avatarExtractionMethod: 'MediaPipe InteractiveSegmenter (Magic Touch)',
+      avatarModelName: 'Magic Touch (Interactive Segmenter)',
+      avatarModelFileSize: '6.22 MB (Local WASM)',
+      avatarModelLoadTimeMs: null,
+      avatarInferenceTimeMs: null,
       avatarExtractionTimeMs: null,
       avatarForegroundResolution: null,
-      avatarModelSize: '0 MB (Pure TS Engine)',
+      avatarModelSize: '6.22 MB',
+      avatarExecutionBackend: 'WASM (SIMD)',
     };
   });
 
@@ -288,14 +293,19 @@ export default function App() {
     setStamps((prev) => [...prev, newStamp]);
     setSelectedStampId(newId);
 
-    // Update real-time developer telemetry
+    // Update real-time developer telemetry with real measured values
     setDevInfo((prev) => ({
       ...prev,
       foregroundItemCount: (prev.foregroundItemCount ?? 0) + 1,
-      avatarExtractionMethod: result.adapterName,
+      avatarExtractionMethod: `${result.adapterName} [${result.engineMode === 'mediapipe' ? '方式E: AI' : '方式A: Pure TS'}]`,
+      avatarModelName: result.modelName,
+      avatarModelFileSize: result.modelFileSize,
+      avatarModelLoadTimeMs: result.modelLoadTimeMs,
+      avatarInferenceTimeMs: result.inferenceTimeMs,
       avatarExtractionTimeMs: result.extractionTimeMs,
       avatarForegroundResolution: `${result.width} × ${result.height} px`,
       avatarModelSize: result.modelSize,
+      avatarExecutionBackend: result.executionBackend,
     }));
   };
 

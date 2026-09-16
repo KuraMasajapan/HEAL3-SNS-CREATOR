@@ -54,7 +54,101 @@ export interface SamplePreset {
   dataUrl: string;
 }
 
+function createHeal3ScreenMockDataUrl(
+  type: 'white_hoodie' | 'black_bear'
+): string {
+  const width = 720;
+  const height = 1280;
+  const avatarName = type === 'white_hoodie' ? 'KuraMasa' : 'Yuki';
+  const avatarRank = type === 'white_hoodie' ? 'S' : 'A';
+  const hoodieColor = type === 'white_hoodie' ? '#f8fafc' : '#1e1b4b';
+  const pantsColor = type === 'white_hoodie' ? '#334155' : '#0f172a';
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <defs>
+        <linearGradient id="skyBg" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#38bdf8" />
+          <stop offset="40%" stop-color="#bae6fd" />
+          <stop offset="70%" stop-color="#e0f2fe" />
+          <stop offset="100%" stop-color="#ffffff" />
+        </linearGradient>
+      </defs>
+      
+      <!-- HEAL3 Sky Background -->
+      <rect width="${width}" height="${height}" fill="url(#skyBg)" />
+
+      <!-- Left Map Section Simulation -->
+      <rect x="20" y="80" width="310" height="960" rx="24" fill="#0f172a" fill-opacity="0.85" stroke="#38bdf8" stroke-opacity="0.3" stroke-width="2" />
+      <text x="40" y="130" fill="#38bdf8" font-family="system-ui, sans-serif" font-weight="700" font-size="20">GPS ROUTE</text>
+      <path d="M 60 850 Q 120 700, 160 550 T 260 250" fill="none" stroke="#22c55e" stroke-width="8" stroke-linecap="round" />
+      <circle cx="260" cy="250" r="14" fill="#22c55e" stroke="#ffffff" stroke-width="3" />
+      <circle cx="60" cy="850" r="10" fill="#3b82f6" stroke="#ffffff" stroke-width="2" />
+      <text x="40" y="980" fill="#94a3b8" font-family="monospace" font-size="16">DIST: 5.42 km</text>
+
+      <!-- Right 3D Character Section Simulation -->
+      <!-- Avatar Ground Shadow -->
+      <ellipse cx="540" cy="940" rx="90" ry="22" fill="#000000" fill-opacity="0.25" />
+
+      <!-- Character Silhouette / Body (Human Anatomy for Segmentation) -->
+      <!-- Legs & Sneakers -->
+      <rect x="500" y="820" width="28" height="100" rx="12" fill="${pantsColor}" />
+      <rect x="552" y="820" width="28" height="100" rx="12" fill="${pantsColor}" />
+      <rect x="492" y="910" width="42" height="26" rx="8" fill="#e2e8f0" stroke="#0ea5e9" stroke-width="3" />
+      <rect x="548" y="910" width="42" height="26" rx="8" fill="#e2e8f0" stroke="#0ea5e9" stroke-width="3" />
+
+      <!-- Torso & Hoodie -->
+      <path d="M 480 620 Q 470 780, 500 830 L 580 830 Q 610 780, 600 620 Z" fill="${hoodieColor}" stroke="#64748b" stroke-width="2" />
+      
+      <!-- Arms -->
+      <path d="M 480 640 Q 450 720, 460 760" fill="none" stroke="${hoodieColor}" stroke-width="26" stroke-linecap="round" />
+      <path d="M 600 640 Q 630 720, 620 760" fill="none" stroke="${hoodieColor}" stroke-width="26" stroke-linecap="round" />
+
+      <!-- Head & Hair / Hoodie Hood -->
+      <circle cx="540" cy="550" r="46" fill="#fed7aa" />
+      <circle cx="540" cy="530" r="54" fill="${hoodieColor}" />
+      <circle cx="540" cy="550" r="40" fill="#fed7aa" />
+      ${type === 'black_bear' ? `
+        <!-- Bear Ears -->
+        <circle cx="498" cy="485" r="16" fill="#1e1b4b" stroke="#f43f5e" stroke-width="2" />
+        <circle cx="582" cy="485" r="16" fill="#1e1b4b" stroke="#f43f5e" stroke-width="2" />
+      ` : ''}
+
+      <!-- UI Text on the Right to Test Exclusion: KuraMasa, S, etc. -->
+      <rect x="450" y="380" width="240" height="90" rx="16" fill="#0f172a" fill-opacity="0.8" stroke="#38bdf8" stroke-width="1.5" />
+      <text x="470" y="420" fill="#ffffff" font-family="system-ui, sans-serif" font-weight="800" font-size="24">${avatarName}</text>
+      <rect x="630" y="395" width="44" height="30" rx="8" fill="#eab308" />
+      <text x="644" y="417" fill="#000000" font-family="system-ui, sans-serif" font-weight="900" font-size="18">${avatarRank}</text>
+      <text x="470" y="452" fill="#38bdf8" font-family="monospace" font-size="14">H-III GAUGE 100%</text>
+
+      <!-- Bottom Badges / Items to Test Exclusion -->
+      <rect x="360" y="1020" width="330" height="180" rx="20" fill="#1e293b" fill-opacity="0.9" stroke="#475569" stroke-width="1.5" />
+      <text x="380" y="1060" fill="#94a3b8" font-family="system-ui, sans-serif" font-weight="600" font-size="16">EQUIPMENT &amp; STAMINA</text>
+      <rect x="380" y="1080" width="80" height="80" rx="14" fill="#334155" />
+      <rect x="480" y="1080" width="80" height="80" rx="14" fill="#334155" />
+      <rect x="580" y="1080" width="80" height="80" rx="14" fill="#334155" />
+    </svg>
+  `;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 export const SAMPLE_PRESETS: SamplePreset[] = [
+  {
+    id: 'heal3_white_hoodie',
+    name: 'HEAL3 白パーカー (IMG_3714 相当)',
+    ratioName: '9:16 (HEAL3 Screen)',
+    width: 720,
+    height: 1280,
+    dataUrl: createHeal3ScreenMockDataUrl('white_hoodie'),
+  },
+  {
+    id: 'heal3_black_bear',
+    name: 'HEAL3 黒クマパーカー (1783473240817 相当)',
+    ratioName: '9:16 (HEAL3 Screen)',
+    width: 720,
+    height: 1280,
+    dataUrl: createHeal3ScreenMockDataUrl('black_bear'),
+  },
   {
     id: 'sunset_9_16',
     name: 'Twilight Dusk',

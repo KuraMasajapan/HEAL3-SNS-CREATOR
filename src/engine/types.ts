@@ -203,10 +203,17 @@ export interface DeveloperInfoData {
   webCodecsH264Available: boolean;
   // Avatar Extraction telemetry
   avatarExtractionMethod: string;
+  avatarModelName?: string;
+  avatarModelFileSize?: string;
+  avatarModelLoadTimeMs?: number | null;
+  avatarInferenceTimeMs?: number | null;
   avatarExtractionTimeMs: number | null;
   avatarForegroundResolution: string | null;
   avatarModelSize: string;
+  avatarExecutionBackend?: string;
 }
+
+export type AvatarExtractionEngineMode = 'mediapipe' | 'legacy_pure_ts';
 
 /**
  * HEAL3 Avatar Adapter Definition Interface.
@@ -227,14 +234,30 @@ export interface AvatarAdapterDefinition {
   edgeTolerance: number;
   /** Edge feathering radius in pixels */
   featherRadius: number;
+  /** Suggested confidence threshold for ML models (e.g. 0.40 - 0.70) */
+  suggestedConfidence?: number;
+  /** Known UI exclusion zones (normalized coordinates) to prevent UI bleed */
+  uiExclusionZones?: { xMin: number; xMax: number; yMin: number; yMax: number }[];
 }
 
+export type AlphaConversionMode =
+  | 'raw_confidence'       // A: Continuous confidence-weighted alpha (Legacy semi-transparent)
+  | 'binary_threshold'     // B: Strict binary threshold (Opaque 255 inside, 0 outside)
+  | 'threshold_feather';   // C: Binary threshold with edge-only anti-aliased feather (1-3px boundary)
+
 export interface AvatarExtractionOptions {
+  engineMode?: AvatarExtractionEngineMode;
   adapterId: string;
   /** User tap / focus coordinate in normalized coordinates [0, 1] */
   focusPoint?: { x: number; y: number };
   /** Edge tolerance multiplier (0.5 to 2.0, default 1.0) */
   toleranceMultiplier?: number;
+  /** ML model confidence threshold (0.2 to 0.8, default 0.40) */
+  confidenceThreshold?: number;
+  /** Alpha conversion method for post-processing evaluation */
+  alphaMode?: AlphaConversionMode;
+  /** Edge feather radius in pixels (only used for threshold_feather mode, default 2) */
+  featherRadius?: number;
 }
 
 export interface AvatarExtractionResult {
@@ -243,7 +266,58 @@ export interface AvatarExtractionResult {
   width: number;
   height: number;
   aspectRatio: number;
+  engineMode: AvatarExtractionEngineMode;
+  modelName?: string;
+  modelFileSize?: string;
+  modelLoadTimeMs?: number;
+  inferenceTimeMs?: number;
   extractionTimeMs: number;
+  executionBackend?: string;
+  detectedPixelCount?: number;
   adapterName: string;
   modelSize: string;
+
+  // Debug & Quality Isolation Artifacts
+  originalUrl?: string;
+  rawConfidenceMaskUrl?: string;
+  thresholdBinaryMaskUrl?: string;
+  finalAlphaResultUrl?: string;
+  alphaMode?: AlphaConversionMode;
+  confidenceThresholdUsed?: number;
+  featherRadiusUsed?: number;
 }
+
+export interface DiagnosticStep {
+  stepNumber: number;
+  name: string;
+  status: 'PENDING' | 'RUNNING' | 'OK' | 'FAILED' | 'SKIPPED';
+  durationMs?: number;
+  httpStatus?: string;
+  url?: string;
+  details?: string;
+  error?: {
+    name: string;
+    message: string;
+    stack?: string;
+  };
+}
+
+export interface MediaPipeDiagnosticReport {
+  timestamp: number;
+  overallStatus: 'IDLE' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+  steps: DiagnosticStep[];
+  modelUrl: string;
+  wasmUrl: string;
+  filesetResolverResult?: any;
+  createFromOptionsResult?: string;
+  activeEngineType?: 'InteractiveSegmenterLegacy' | 'InteractiveSegmenter' | null;
+  capturedLogs: string[];
+  errorSummary?: {
+    name: string;
+    message: string;
+    stack?: string;
+    failedStep: number;
+    failedStepName: string;
+  };
+}
+

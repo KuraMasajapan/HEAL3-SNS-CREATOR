@@ -251,7 +251,7 @@ export default function DeveloperInfoModal({
             <div className="flex items-center justify-between text-emerald-400 font-semibold text-[11px] uppercase tracking-wider font-sans">
               <div className="flex items-center gap-1.5">
                 <Scissors className="w-3.5 h-3.5" />
-                <span>Avatar Extraction (PoC)</span>
+                <span>Avatar Extraction (実測メトリクス)</span>
               </div>
               <span className="text-[10px] text-zinc-500 font-mono">100% Client-side</span>
             </div>
@@ -259,19 +259,47 @@ export default function DeveloperInfoModal({
               <div>
                 <span className="text-neutral-500 block text-[10px]">Extraction Method</span>
                 <span className="font-semibold text-emerald-300">
-                  {devInfo.avatarExtractionMethod || 'Hybrid Adapter (HEAL3)'}
+                  {devInfo.avatarExtractionMethod || '未実行'}
                 </span>
               </div>
               <div>
-                <span className="text-neutral-500 block text-[10px]">Model / Engine Size</span>
+                <span className="text-neutral-500 block text-[10px]">Model Name</span>
+                <span className="font-semibold text-neutral-200 truncate">
+                  {devInfo.avatarModelName || '未ロード'}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Model File Size</span>
                 <span className="font-semibold text-neutral-200 font-mono">
-                  {devInfo.avatarModelSize || '0 MB (Pure TS Engine)'}
+                  {devInfo.avatarModelFileSize || devInfo.avatarModelSize || '-'}
                 </span>
               </div>
               <div>
-                <span className="text-neutral-500 block text-[10px]">Extraction Latency</span>
-                <span className="font-semibold text-neutral-200">
+                <span className="text-neutral-500 block text-[10px]">Execution Backend</span>
+                <span className="font-semibold text-indigo-300 font-mono">
+                  {devInfo.avatarExecutionBackend || '-'}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Inference Time (実測)</span>
+                <span className="font-semibold text-emerald-400 font-mono">
+                  {devInfo.avatarInferenceTimeMs !== null && devInfo.avatarInferenceTimeMs !== undefined
+                    ? `${devInfo.avatarInferenceTimeMs} ms`
+                    : '-'}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Total Extraction Latency</span>
+                <span className="font-semibold text-neutral-200 font-mono">
                   {devInfo.avatarExtractionTimeMs !== null ? `${devInfo.avatarExtractionTimeMs} ms` : '未実行'}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Model Load Time</span>
+                <span className="font-semibold text-neutral-300 font-mono">
+                  {devInfo.avatarModelLoadTimeMs !== null && devInfo.avatarModelLoadTimeMs !== undefined
+                    ? `${devInfo.avatarModelLoadTimeMs} ms`
+                    : '-'}
                 </span>
               </div>
               <div>
