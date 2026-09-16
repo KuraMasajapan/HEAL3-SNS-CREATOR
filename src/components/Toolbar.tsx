@@ -69,7 +69,7 @@ export default function Toolbar({
   return (
     <div
       id="bottom-toolbar"
-      className="w-full bg-neutral-900/95 backdrop-blur-lg border-t border-neutral-800/80 px-3 py-2 pb-safe z-30 flex flex-col gap-2 flex-shrink-0"
+      className="w-full bg-neutral-900/95 backdrop-blur-lg border-t border-neutral-800/80 px-3 pt-2 pb-safe z-30 flex flex-col gap-2 flex-shrink-0 max-h-[46dvh] overflow-y-auto overscroll-contain"
     >
       {/* Hidden file input for custom transparent PNG foreground */}
       <input

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { BaseImageState, DeveloperInfoData, MotionId, SceneMotionId, StampItem, StampType } from './engine/types.ts';
 import { calculateExportDimensions, ExportQuality, QUALITY_PRESETS } from './engine/config.ts';
 import { createForegroundItem, loadPresetImage, SAMPLE_AVATAR_DATA_URL, SAMPLE_PRESETS, SamplePreset } from './engine/sampleImages.ts';
-import { detectDeviceBrowser, getCurrentViewportDimensions, processUserImage } from './engine/viewport.ts';
+import { detectDeviceBrowser, getCurrentViewportDimensions, initViewportHeightSync, processUserImage } from './engine/viewport.ts';
 import { checkWebCodecsSupport, exportArtwork, PreferredExportMode } from './engine/exporter.ts';
 import { SCENE_MOTION_RECIPES } from './engine/motion.ts';
 import CanvasStage from './components/CanvasStage.tsx';
@@ -125,8 +125,10 @@ export default function App() {
     };
   });
 
-  // Check WebCodecs capabilities & load initial preset image on mount
+  // Check WebCodecs capabilities, start viewport height synchronization & load initial preset image on mount
   useEffect(() => {
+    const cleanupViewportSync = initViewportHeightSync();
+
     checkWebCodecsSupport().then((status) => {
       setDevInfo((prev) => ({
         ...prev,
@@ -138,6 +140,10 @@ export default function App() {
     loadPresetImage(SAMPLE_PRESETS[0])
       .then((loaded) => setBaseImage(loaded))
       .catch((err) => console.error('Failed to load initial preset:', err));
+
+    return () => {
+      cleanupViewportSync();
+    };
   }, []);
 
   // Update dev metrics
@@ -355,7 +361,11 @@ export default function App() {
   return (
     <div
       id="app-root"
-      className="flex flex-col h-screen w-screen overflow-hidden bg-neutral-950 text-neutral-100 font-sans select-none touch-none"
+      style={{
+        height: 'var(--app-height, 100dvh)',
+        maxHeight: 'var(--app-height, 100dvh)',
+      }}
+      className="flex flex-col w-full overflow-hidden bg-neutral-950 text-neutral-100 font-sans select-none"
     >
       {/* Header bar */}
       <Header
@@ -367,8 +377,8 @@ export default function App() {
         isDevInfoOpen={isDevInfoOpen}
       />
 
-      {/* Main Canvas Viewport Area */}
-      <main className="flex-1 relative w-full h-full flex items-center justify-center overflow-hidden">
+      {/* Main Canvas Viewport Area - min-h-0 ensures canvas shrinks appropriately when toolbar expands */}
+      <main className="flex-1 min-h-0 relative w-full flex items-center justify-center overflow-hidden">
         <CanvasStage
           baseImage={baseImage}
           stamps={stamps}

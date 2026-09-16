@@ -61,6 +61,41 @@ export function getCurrentViewportDimensions(): ViewportDimensions {
 }
 
 /**
+ * Synchronizes the actual visible viewport height with a CSS custom property `--app-height`.
+ * This handles dynamic iOS Safari navigation bar showing/hiding, keyboard, and visual viewport changes,
+ * guaranteeing that flex containers never exceed the actual visible area on mobile.
+ */
+export function initViewportHeightSync(): () => void {
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+
+  const update = () => {
+    const vv = window.visualViewport;
+    const height = vv ? vv.height : window.innerHeight;
+    document.documentElement.style.setProperty('--app-height', `${Math.round(height)}px`);
+  };
+
+  update();
+
+  window.addEventListener('resize', update);
+  window.addEventListener('orientationchange', update);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', update);
+    window.visualViewport.addEventListener('scroll', update);
+  }
+
+  return () => {
+    window.removeEventListener('resize', update);
+    window.removeEventListener('orientationchange', update);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', update);
+      window.visualViewport.removeEventListener('scroll', update);
+    }
+  };
+}
+
+/**
  * Calculates canvas display size (CSS pixels) fitting inside container
  * while strictly maintaining the Base Image's aspect ratio.
  */

@@ -43,7 +43,7 @@ export default function DeveloperInfoModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-neutral-900 border-t sm:border border-neutral-700 sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[88vh] flex flex-col"
+        className="w-full max-w-lg bg-neutral-900 border-t sm:border border-neutral-700 sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[85dvh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -399,7 +399,7 @@ export default function DeveloperInfoModal({
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2.5 border-t border-neutral-800 bg-neutral-950/70 flex justify-end">
+        <div className="px-4 py-2.5 pb-safe border-t border-neutral-800 bg-neutral-950/70 flex justify-end">
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium transition"

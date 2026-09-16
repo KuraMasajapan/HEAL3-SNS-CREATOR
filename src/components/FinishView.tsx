@@ -94,10 +94,10 @@ export default function FinishView({
         </div>
       )}
 
-      {/* Floating action bar at bottom once finished or while watching */}
+      {/* Action bar at bottom once finished or while watching */}
       <div
         id="finish-action-bar"
-        className="fixed bottom-0 left-0 right-0 z-40 bg-neutral-900/95 backdrop-blur-xl border-t border-neutral-800/80 px-4 py-3 pb-safe shadow-2xl flex flex-col gap-2"
+        className="w-full bg-neutral-900/95 backdrop-blur-xl border-t border-neutral-800/80 px-4 py-2.5 pb-safe z-30 shadow-2xl flex flex-col gap-2 flex-shrink-0 max-h-[46dvh] overflow-y-auto overscroll-contain"
       >
         {/* Error notification */}
         {exportError && (

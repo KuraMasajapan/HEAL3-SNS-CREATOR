@@ -62,7 +62,7 @@ export default function CanvasStage({
     dpr: Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2.5),
   });
 
-  // Track container dimensions and calculate aspect-fit canvas size
+  // Track container dimensions and calculate aspect-fit canvas size using ResizeObserver
   useEffect(() => {
     const updateSize = () => {
       if (!containerRef.current) return;
@@ -92,8 +92,24 @@ export default function CanvasStage({
     };
 
     updateSize();
+
+    // Use ResizeObserver for responsive canvas resizing when toolbar expands/collapses or viewport shifts
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      ro = new ResizeObserver(() => {
+        updateSize();
+      });
+      ro.observe(containerRef.current);
+    }
+
     window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    window.addEventListener('orientationchange', updateSize);
+
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', updateSize);
+      window.removeEventListener('orientationchange', updateSize);
+    };
   }, [baseImage.aspectRatio, onCanvasMetricsUpdate]);
 
   // Main 60FPS animation loop using requestAnimationFrame
@@ -449,7 +465,7 @@ export default function CanvasStage({
     <div
       ref={containerRef}
       id="canvas-container"
-      className="relative flex-1 w-full h-full flex items-center justify-center overflow-hidden p-2 sm:p-4"
+      className="relative flex-1 min-h-0 w-full h-full flex items-center justify-center overflow-hidden p-2 sm:p-3"
     >
       <canvas
         ref={canvasRef}
