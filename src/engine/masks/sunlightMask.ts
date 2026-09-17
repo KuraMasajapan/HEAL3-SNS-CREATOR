@@ -1,693 +1,291 @@
 /**
- * HEAL3 SNS-Creator - Sunlight Mask v1 (木漏れ日・柔らかな自然光・微細光粒子)
+ * HEAL3 SNS-Creator - Sunlight Mask v2 (天から差し込む光の帯・光芒 / God Rays & Crepuscular Beams)
  *
  * Atmospheric Sunlight Layer:
- * - Expresses gentle dappled canopy light (木漏れ日) through warm, soft-edge elliptical bokeh patches.
- * - Drifts gently and pulses with a calm "breathing" rhythm (sinusoidal brightness and subtle radius breathing).
- * - Floats tiny, luminous warm-gold micro-particles that drift leisurely upward and diagonally.
- * - Adds a very faint global warmth shimmer without washing out or obscuring the central avatar / result stats.
- * - Perfectly seamless time loop (default 4000ms period) so GIF and video exports have zero seam artifacts.
- * - Weak / Medium / Strong tiers carefully balanced for SNS photo enhancement.
+ * - Expresses gentle, ethereal light rays (光帯・光芒) streaming down at a diagonal angle from the upper sky.
+ * - Each beam has a smooth volumetric gradient (brightest along its spine, seamlessly feathering outwards).
+ * - Light beams drift slowly sideways/diagonally with an organic breathing cycle in opacity and width.
+ * - Illuminates softly only where beams fall; avoids flat overall washing out or harsh lens flare/glare.
+ * - Replaced bubbling/ascending micro particles with a very minimal set (3-6) of barely visible,
+ *   slow-floating sunlit atmospheric dust motes (微細な光埃) with NO bubble-like upward motion.
+ * - Seamless loop (default 4800ms period) ensures preview and static/video/GIF export look identical.
+ * - Weak / Medium / Strong intensity tiers crafted strictly for flattering SNS portrait/result aesthetics.
  */
 
 import { MaskConfig, MaskIntensity } from '../types.ts';
 
-export const SUNLIGHT_LOOP_PERIOD_MS = 4000;
+export const SUNLIGHT_LOOP_PERIOD_MS = 4800;
 
 /**
- * Dappled Sunlight Bokeh Patch Definition (Normalized Coordinates 0.0 - 1.0)
+ * Volumetric Light Beam (光帯・光芒) Definition
  */
-interface SunlightPatch {
+interface SunlightBeam {
   id: number;
-  /** Center X spawn (normalized 0..1) */
-  cx: number;
-  /** Center Y spawn (normalized 0..1) */
-  cy: number;
-  /** Radius relative to min(width, height) */
-  radiusScale: number;
-  /** Aspect ratio of the elliptical patch (width / height) */
-  aspect: number;
-  /** Patch rotation angle in radians */
-  rotation: number;
-  /** Maximum drift excursion in normalized X */
-  driftAmpX: number;
-  /** Maximum drift excursion in normalized Y */
-  driftAmpY: number;
-  /** Harmonic frequency multiplier for drift */
-  driftFreq: number;
-  /** Harmonic phase offset for drift */
-  driftPhase: number;
-  /** Base opacity for the warm core (0.0 - 1.0) */
+  /** Normalized anchor X at the top boundary (or slightly above) */
+  originX: number;
+  /** Normalized anchor Y above viewport */
+  originY: number;
+  /** Direction angle in radians (pointing down-right, e.g. ~62 to 74 degrees) */
+  baseAngle: number;
+  /** Length multiplier relative to canvas height */
+  lengthScale: number;
+  /** Beam width scale at origin */
+  topWidthScale: number;
+  /** Beam width scale at terminus (fanning out downwards) */
+  bottomWidthScale: number;
+  /** Horizontal sway amplitude for origin anchor */
+  swayOriginXAmp: number;
+  /** Angle fluctuation amplitude (radians) */
+  swayAngleAmp: number;
+  /** Harmonic frequency multipliers for seamless loop */
+  harmonic: number;
+  /** Phase offset in radians */
+  phase: number;
+  /** Secondary slow breath phase offset */
+  breathPhase: number;
+  /** Base opacity of the central beam spine */
   baseAlpha: number;
-  /** Alpha oscillation amplitude */
+  /** Opacity breathing amplitude */
   alphaAmp: number;
-  /** Breathing pulse frequency (integer multiples of 2*PI for seamless loop) */
-  pulseHarmonic: number;
-  /** Breathing pulse phase */
-  pulsePhase: number;
-  /** Warm sunlight tone gradient: core color */
+  /** Core spine tint (rgba prefix, e.g. 'rgba(255, 252, 235, ') */
   coreColor: string;
-  /** Mid color */
-  midColor: string;
+  /** Flank warm tint (rgba prefix, e.g. 'rgba(254, 240, 138, ') */
+  flankColor: string;
+  /** Internal subtle foliage shadow mottling frequency */
+  mottlingHarmonic: number;
 }
 
 /**
- * Micro Light Particle Definition (Normalized Coordinates 0.0 - 1.0)
+ * Minimal Sunlit Dust Mote (微細な光埃 - 泡のような上昇ではなく、空中に静かに漂う微小粒子)
  */
-interface SunlightParticle {
+interface SunlitDustMote {
   id: number;
-  /** Spawn origin X (normalized 0..1) */
-  spawnX: number;
-  /** Vertical starting phase offset (0..1) */
-  initialOffsetY: number;
-  /** Number of complete ascents per loop period (integer for seamless loop) */
-  verticalLoops: number;
-  /** Particle radius in normalized units */
+  /** Static base normalized anchor X */
+  baseX: number;
+  /** Static base normalized anchor Y */
+  baseY: number;
+  /** Gentle hovering excursion radius */
+  hoverRadiusX: number;
+  hoverRadiusY: number;
+  /** Harmonic frequencies */
+  freqX: number;
+  freqY: number;
+  phaseX: number;
+  phaseY: number;
+  /** Size scale (radius) */
   radiusScale: number;
-  /** Horizontal sway excursion amplitude */
-  swayAmp: number;
-  /** Sway harmonic frequency */
-  swayHarmonic: number;
-  /** Sway phase */
-  swayPhase: number;
-  /** Twinkle harmonic frequency */
-  twinkleHarmonic: number;
-  /** Twinkle phase */
+  /** Subtle twinkle */
   twinklePhase: number;
-  /** Base opacity */
   baseAlpha: number;
-  /** Warm golden or soft cream particle color */
-  color: string;
 }
 
 /**
- * Dappled Light Patches Preset Catalog (Positioned intentionally around periphery and upper canopy,
- * leaving the central avatar area clear and bright without obstruction).
+ * Preset Catalog of Sunlight Beams (2 to 4 streams angled from upper-left to lower-right)
  */
-const SUNLIGHT_PATCHES: SunlightPatch[] = [
-  // --- WEAK TIER (5 subtle patches) ---
+const SUNLIGHT_BEAMS: SunlightBeam[] = [
+  // Beam 0: Primary soft main beam (slanted gracefully across the upper and right canvas)
   {
     id: 0,
-    cx: 0.18,
-    cy: 0.16,
-    radiusScale: 0.32,
-    aspect: 1.35,
-    rotation: 0.45,
-    driftAmpX: 0.025,
-    driftAmpY: 0.018,
-    driftFreq: 1,
-    driftPhase: 0.0,
-    baseAlpha: 0.13,
-    alphaAmp: 0.04,
-    pulseHarmonic: 1,
-    pulsePhase: 0.2,
-    coreColor: 'rgba(255, 248, 220, ',
-    midColor: 'rgba(254, 240, 138, ',
+    originX: 0.18,
+    originY: -0.15,
+    baseAngle: Math.PI * 0.38, // ~68.4 deg
+    lengthScale: 1.55,
+    topWidthScale: 0.14,
+    bottomWidthScale: 0.38,
+    swayOriginXAmp: 0.045,
+    swayAngleAmp: 0.035,
+    harmonic: 1,
+    phase: 0.0,
+    breathPhase: 0.2,
+    baseAlpha: 0.16,
+    alphaAmp: 0.045,
+    coreColor: 'rgba(255, 253, 242, ',
+    flankColor: 'rgba(254, 243, 199, ',
+    mottlingHarmonic: 1,
   },
+  // Beam 1: Secondary beam (offset to the right, softer and broader)
   {
     id: 1,
-    cx: 0.82,
-    cy: 0.22,
-    radiusScale: 0.36,
-    aspect: 1.25,
-    rotation: -0.38,
-    driftAmpX: 0.022,
-    driftAmpY: 0.026,
-    driftFreq: 1,
-    driftPhase: 1.4,
+    originX: 0.52,
+    originY: -0.18,
+    baseAngle: Math.PI * 0.40, // ~72 deg
+    lengthScale: 1.60,
+    topWidthScale: 0.16,
+    bottomWidthScale: 0.44,
+    swayOriginXAmp: 0.040,
+    swayAngleAmp: 0.030,
+    harmonic: 1,
+    phase: 1.8,
+    breathPhase: 2.1,
     baseAlpha: 0.14,
-    alphaAmp: 0.04,
-    pulseHarmonic: 1,
-    pulsePhase: 1.8,
-    coreColor: 'rgba(254, 243, 199, ',
-    midColor: 'rgba(253, 224, 71, ',
+    alphaAmp: 0.040,
+    coreColor: 'rgba(254, 249, 215, ',
+    flankColor: 'rgba(253, 230, 138, ',
+    mottlingHarmonic: 1,
   },
+  // Beam 2: Tertiary slender beam (slanted across the upper-left, subtle canopy accent)
   {
     id: 2,
-    cx: 0.88,
-    cy: 0.68,
-    radiusScale: 0.30,
-    aspect: 1.40,
-    rotation: 0.62,
-    driftAmpX: 0.020,
-    driftAmpY: 0.022,
-    driftFreq: 1,
-    driftPhase: 2.8,
-    baseAlpha: 0.11,
+    originX: -0.05,
+    originY: -0.10,
+    baseAngle: Math.PI * 0.36, // ~64.8 deg
+    lengthScale: 1.45,
+    topWidthScale: 0.10,
+    bottomWidthScale: 0.30,
+    swayOriginXAmp: 0.035,
+    swayAngleAmp: 0.025,
+    harmonic: 1,
+    phase: 3.4,
+    breathPhase: 3.7,
+    baseAlpha: 0.12,
     alphaAmp: 0.035,
-    pulseHarmonic: 1,
-    pulsePhase: 3.2,
-    coreColor: 'rgba(255, 251, 235, ',
-    midColor: 'rgba(252, 211, 77, ',
+    coreColor: 'rgba(255, 250, 230, ',
+    flankColor: 'rgba(254, 240, 138, ',
+    mottlingHarmonic: 1,
   },
+  // Beam 3: Far right ambient stream (active on Strong tier to enrich depth)
   {
     id: 3,
-    cx: 0.12,
-    cy: 0.78,
-    radiusScale: 0.28,
-    aspect: 1.20,
-    rotation: -0.50,
-    driftAmpX: 0.018,
-    driftAmpY: 0.016,
-    driftFreq: 1,
-    driftPhase: 4.1,
-    baseAlpha: 0.10,
-    alphaAmp: 0.03,
-    pulseHarmonic: 1,
-    pulsePhase: 4.5,
-    coreColor: 'rgba(254, 249, 195, ',
-    midColor: 'rgba(250, 204, 21, ',
-  },
-  {
-    id: 4,
-    cx: 0.50,
-    cy: 0.08,
-    radiusScale: 0.38,
-    aspect: 1.60,
-    rotation: 0.12,
-    driftAmpX: 0.030,
-    driftAmpY: 0.015,
-    driftFreq: 1,
-    driftPhase: 0.8,
-    baseAlpha: 0.12,
-    alphaAmp: 0.035,
-    pulseHarmonic: 1,
-    pulsePhase: 0.9,
-    coreColor: 'rgba(255, 255, 240, ',
-    midColor: 'rgba(254, 240, 138, ',
-  },
-
-  // --- MEDIUM TIER EXPANSIONS (+4 patches => total 9) ---
-  {
-    id: 5,
-    cx: 0.34,
-    cy: 0.28,
-    radiusScale: 0.24,
-    aspect: 1.15,
-    rotation: -0.28,
-    driftAmpX: 0.024,
-    driftAmpY: 0.020,
-    driftFreq: 1,
-    driftPhase: 2.1,
-    baseAlpha: 0.11,
-    alphaAmp: 0.035,
-    pulseHarmonic: 1,
-    pulsePhase: 2.6,
-    coreColor: 'rgba(254, 243, 199, ',
-    midColor: 'rgba(253, 230, 138, ',
-  },
-  {
-    id: 6,
-    cx: 0.68,
-    cy: 0.42,
-    radiusScale: 0.22,
-    aspect: 1.30,
-    rotation: 0.34,
-    driftAmpX: 0.018,
-    driftAmpY: 0.016,
-    driftFreq: 1,
-    driftPhase: 3.5,
-    baseAlpha: 0.10,
-    alphaAmp: 0.03,
-    pulseHarmonic: 1,
-    pulsePhase: 3.9,
-    coreColor: 'rgba(255, 250, 230, ',
-    midColor: 'rgba(252, 211, 77, ',
-  },
-  {
-    id: 7,
-    cx: 0.22,
-    cy: 0.52,
-    radiusScale: 0.26,
-    aspect: 1.22,
-    rotation: 0.55,
-    driftAmpX: 0.020,
-    driftAmpY: 0.022,
-    driftFreq: 1,
-    driftPhase: 5.0,
-    baseAlpha: 0.11,
-    alphaAmp: 0.035,
-    pulseHarmonic: 1,
-    pulsePhase: 5.3,
-    coreColor: 'rgba(254, 249, 195, ',
-    midColor: 'rgba(251, 191, 36, ',
-  },
-  {
-    id: 8,
-    cx: 0.76,
-    cy: 0.84,
-    radiusScale: 0.25,
-    aspect: 1.35,
-    rotation: -0.42,
-    driftAmpX: 0.022,
-    driftAmpY: 0.018,
-    driftFreq: 1,
-    driftPhase: 1.1,
-    baseAlpha: 0.10,
-    alphaAmp: 0.03,
-    pulseHarmonic: 1,
-    pulsePhase: 1.5,
-    coreColor: 'rgba(255, 255, 235, ',
-    midColor: 'rgba(254, 240, 138, ',
-  },
-
-  // --- STRONG TIER EXPANSIONS (+4 patches => total 13) ---
-  {
-    id: 9,
-    cx: 0.06,
-    cy: 0.38,
-    radiusScale: 0.26,
-    aspect: 1.45,
-    rotation: 0.72,
-    driftAmpX: 0.026,
-    driftAmpY: 0.019,
-    driftFreq: 1,
-    driftPhase: 0.5,
-    baseAlpha: 0.12,
-    alphaAmp: 0.04,
-    pulseHarmonic: 1,
-    pulsePhase: 0.7,
-    coreColor: 'rgba(254, 243, 199, ',
-    midColor: 'rgba(253, 224, 71, ',
-  },
-  {
-    id: 10,
-    cx: 0.94,
-    cy: 0.46,
-    radiusScale: 0.27,
-    aspect: 1.30,
-    rotation: -0.65,
-    driftAmpX: 0.022,
-    driftAmpY: 0.024,
-    driftFreq: 1,
-    driftPhase: 2.4,
-    baseAlpha: 0.12,
-    alphaAmp: 0.04,
-    pulseHarmonic: 1,
-    pulsePhase: 2.8,
-    coreColor: 'rgba(255, 251, 235, ',
-    midColor: 'rgba(250, 204, 21, ',
-  },
-  {
-    id: 11,
-    cx: 0.45,
-    cy: 0.78,
-    radiusScale: 0.22,
-    aspect: 1.18,
-    rotation: 0.20,
-    driftAmpX: 0.018,
-    driftAmpY: 0.016,
-    driftFreq: 1,
-    driftPhase: 4.4,
-    baseAlpha: 0.09,
-    alphaAmp: 0.03,
-    pulseHarmonic: 1,
-    pulsePhase: 4.8,
-    coreColor: 'rgba(254, 249, 195, ',
-    midColor: 'rgba(252, 211, 77, ',
-  },
-  {
-    id: 12,
-    cx: 0.62,
-    cy: 0.16,
-    radiusScale: 0.30,
-    aspect: 1.50,
-    rotation: -0.30,
-    driftAmpX: 0.028,
-    driftAmpY: 0.020,
-    driftFreq: 1,
-    driftPhase: 3.2,
+    originX: 0.82,
+    originY: -0.16,
+    baseAngle: Math.PI * 0.42, // ~75.6 deg
+    lengthScale: 1.50,
+    topWidthScale: 0.15,
+    bottomWidthScale: 0.42,
+    swayOriginXAmp: 0.038,
+    swayAngleAmp: 0.028,
+    harmonic: 1,
+    phase: 4.8,
+    breathPhase: 5.1,
     baseAlpha: 0.13,
-    alphaAmp: 0.04,
-    pulseHarmonic: 1,
-    pulsePhase: 3.5,
-    coreColor: 'rgba(255, 255, 245, ',
-    midColor: 'rgba(253, 230, 138, ',
+    alphaAmp: 0.035,
+    coreColor: 'rgba(254, 243, 199, ',
+    flankColor: 'rgba(252, 211, 77, ',
+    mottlingHarmonic: 1,
   },
 ];
 
 /**
- * Micro Light Particles Catalog (Tiny floating dust motes catching sunlight)
+ * Very minimal atmospheric floating dust motes (微細な光埃)
+ * Fixed anchors that gently hover in microscopic 2D Lissajous paths, NO bubble rise.
  */
-const SUNLIGHT_PARTICLES: SunlightParticle[] = [
-  // Weak: 8 subtle particles
+const SUNLIT_DUST_MOTES: SunlitDustMote[] = [
   {
     id: 0,
-    spawnX: 0.22,
-    initialOffsetY: 0.12,
-    verticalLoops: 1,
-    radiusScale: 0.0035,
-    swayAmp: 0.016,
-    swayHarmonic: 1,
-    swayPhase: 0.4,
-    twinkleHarmonic: 2,
-    twinklePhase: 0.2,
-    baseAlpha: 0.50,
-    color: '#fef08a',
+    baseX: 0.32,
+    baseY: 0.35,
+    hoverRadiusX: 0.015,
+    hoverRadiusY: 0.012,
+    freqX: 1,
+    freqY: 1,
+    phaseX: 0.3,
+    phaseY: 0.7,
+    radiusScale: 0.0028,
+    twinklePhase: 0.5,
+    baseAlpha: 0.32,
   },
   {
     id: 1,
-    spawnX: 0.78,
-    initialOffsetY: 0.34,
-    verticalLoops: 1,
-    radiusScale: 0.0042,
-    swayAmp: 0.020,
-    swayHarmonic: 1,
-    swayPhase: 1.6,
-    twinkleHarmonic: 2,
-    twinklePhase: 1.8,
-    baseAlpha: 0.55,
-    color: '#fef9c3',
+    baseX: 0.68,
+    baseY: 0.28,
+    hoverRadiusX: 0.018,
+    hoverRadiusY: 0.014,
+    freqX: 1,
+    freqY: 1,
+    phaseX: 1.9,
+    phaseY: 2.4,
+    radiusScale: 0.0034,
+    twinklePhase: 2.1,
+    baseAlpha: 0.36,
   },
   {
     id: 2,
-    spawnX: 0.38,
-    initialOffsetY: 0.58,
-    verticalLoops: 1,
-    radiusScale: 0.0030,
-    swayAmp: 0.014,
-    swayHarmonic: 1,
-    swayPhase: 2.9,
-    twinkleHarmonic: 1,
-    twinklePhase: 3.1,
-    baseAlpha: 0.45,
-    color: '#fde047',
+    baseX: 0.45,
+    baseY: 0.62,
+    hoverRadiusX: 0.012,
+    hoverRadiusY: 0.015,
+    freqX: 1,
+    freqY: 1,
+    phaseX: 3.5,
+    phaseY: 4.1,
+    radiusScale: 0.0026,
+    twinklePhase: 3.8,
+    baseAlpha: 0.28,
   },
   {
     id: 3,
-    spawnX: 0.85,
-    initialOffsetY: 0.78,
-    verticalLoops: 1,
-    radiusScale: 0.0038,
-    swayAmp: 0.018,
-    swayHarmonic: 1,
-    swayPhase: 4.2,
-    twinkleHarmonic: 2,
-    twinklePhase: 4.4,
-    baseAlpha: 0.52,
-    color: '#fef08a',
+    baseX: 0.80,
+    baseY: 0.55,
+    hoverRadiusX: 0.016,
+    hoverRadiusY: 0.013,
+    freqX: 1,
+    freqY: 1,
+    phaseX: 4.8,
+    phaseY: 5.3,
+    radiusScale: 0.0032,
+    twinklePhase: 5.0,
+    baseAlpha: 0.34,
   },
   {
     id: 4,
-    spawnX: 0.14,
-    initialOffsetY: 0.42,
-    verticalLoops: 1,
-    radiusScale: 0.0045,
-    swayAmp: 0.022,
-    swayHarmonic: 1,
-    swayPhase: 0.9,
-    twinkleHarmonic: 1,
-    twinklePhase: 0.6,
-    baseAlpha: 0.48,
-    color: '#fffbeb',
-  },
-  {
-    id: 5,
-    spawnX: 0.64,
-    initialOffsetY: 0.20,
-    verticalLoops: 1,
-    radiusScale: 0.0032,
-    swayAmp: 0.015,
-    swayHarmonic: 1,
-    swayPhase: 2.2,
-    twinkleHarmonic: 2,
-    twinklePhase: 2.5,
-    baseAlpha: 0.46,
-    color: '#fef9c3',
-  },
-  {
-    id: 6,
-    spawnX: 0.48,
-    initialOffsetY: 0.88,
-    verticalLoops: 1,
-    radiusScale: 0.0036,
-    swayAmp: 0.017,
-    swayHarmonic: 1,
-    swayPhase: 3.7,
-    twinkleHarmonic: 1,
-    twinklePhase: 3.9,
-    baseAlpha: 0.50,
-    color: '#fef08a',
-  },
-  {
-    id: 7,
-    spawnX: 0.92,
-    initialOffsetY: 0.62,
-    verticalLoops: 1,
-    radiusScale: 0.0040,
-    swayAmp: 0.019,
-    swayHarmonic: 1,
-    swayPhase: 5.1,
-    twinkleHarmonic: 2,
-    twinklePhase: 5.3,
-    baseAlpha: 0.54,
-    color: '#fde047',
-  },
-
-  // Medium: +7 particles (total 15)
-  {
-    id: 8,
-    spawnX: 0.28,
-    initialOffsetY: 0.26,
-    verticalLoops: 1,
-    radiusScale: 0.0034,
-    swayAmp: 0.016,
-    swayHarmonic: 1,
-    swayPhase: 1.2,
-    twinkleHarmonic: 2,
-    twinklePhase: 1.4,
-    baseAlpha: 0.52,
-    color: '#fffbeb',
-  },
-  {
-    id: 9,
-    spawnX: 0.72,
-    initialOffsetY: 0.48,
-    verticalLoops: 1,
-    radiusScale: 0.0044,
-    swayAmp: 0.021,
-    swayHarmonic: 1,
-    swayPhase: 2.7,
-    twinkleHarmonic: 1,
-    twinklePhase: 2.9,
-    baseAlpha: 0.56,
-    color: '#fef08a',
-  },
-  {
-    id: 10,
-    spawnX: 0.08,
-    initialOffsetY: 0.70,
-    verticalLoops: 1,
-    radiusScale: 0.0031,
-    swayAmp: 0.015,
-    swayHarmonic: 1,
-    swayPhase: 3.9,
-    twinkleHarmonic: 2,
-    twinklePhase: 4.1,
-    baseAlpha: 0.48,
-    color: '#fef9c3',
-  },
-  {
-    id: 11,
-    spawnX: 0.56,
-    initialOffsetY: 0.06,
-    verticalLoops: 1,
-    radiusScale: 0.0040,
-    swayAmp: 0.018,
-    swayHarmonic: 1,
-    swayPhase: 0.3,
-    twinkleHarmonic: 1,
-    twinklePhase: 0.5,
-    baseAlpha: 0.53,
-    color: '#fde047',
-  },
-  {
-    id: 12,
-    spawnX: 0.82,
-    initialOffsetY: 0.94,
-    verticalLoops: 1,
-    radiusScale: 0.0033,
-    swayAmp: 0.016,
-    swayHarmonic: 1,
-    swayPhase: 4.8,
-    twinkleHarmonic: 2,
-    twinklePhase: 5.0,
-    baseAlpha: 0.50,
-    color: '#fef08a',
-  },
-  {
-    id: 13,
-    spawnX: 0.18,
-    initialOffsetY: 0.84,
-    verticalLoops: 1,
-    radiusScale: 0.0042,
-    swayAmp: 0.020,
-    swayHarmonic: 1,
-    swayPhase: 1.9,
-    twinkleHarmonic: 1,
-    twinklePhase: 2.1,
-    baseAlpha: 0.52,
-    color: '#fffbeb',
-  },
-  {
-    id: 14,
-    spawnX: 0.42,
-    initialOffsetY: 0.38,
-    verticalLoops: 1,
-    radiusScale: 0.0036,
-    swayAmp: 0.017,
-    swayHarmonic: 1,
-    swayPhase: 3.3,
-    twinkleHarmonic: 2,
-    twinklePhase: 3.5,
-    baseAlpha: 0.51,
-    color: '#fef9c3',
-  },
-
-  // Strong: +7 particles (total 22)
-  {
-    id: 15,
-    spawnX: 0.32,
-    initialOffsetY: 0.72,
-    verticalLoops: 1,
-    radiusScale: 0.0035,
-    swayAmp: 0.016,
-    swayHarmonic: 1,
-    swayPhase: 0.7,
-    twinkleHarmonic: 2,
-    twinklePhase: 0.9,
-    baseAlpha: 0.54,
-    color: '#fef08a',
-  },
-  {
-    id: 16,
-    spawnX: 0.66,
-    initialOffsetY: 0.64,
-    verticalLoops: 1,
-    radiusScale: 0.0045,
-    swayAmp: 0.022,
-    swayHarmonic: 1,
-    swayPhase: 2.3,
-    twinkleHarmonic: 1,
-    twinklePhase: 2.5,
-    baseAlpha: 0.58,
-    color: '#fde047',
-  },
-  {
-    id: 17,
-    spawnX: 0.96,
-    initialOffsetY: 0.16,
-    verticalLoops: 1,
-    radiusScale: 0.0032,
-    swayAmp: 0.015,
-    swayHarmonic: 1,
-    swayPhase: 3.6,
-    twinkleHarmonic: 2,
-    twinklePhase: 3.8,
-    baseAlpha: 0.50,
-    color: '#fffbeb',
-  },
-  {
-    id: 18,
-    spawnX: 0.05,
-    initialOffsetY: 0.52,
-    verticalLoops: 1,
-    radiusScale: 0.0040,
-    swayAmp: 0.019,
-    swayHarmonic: 1,
-    swayPhase: 4.5,
-    twinkleHarmonic: 1,
-    twinklePhase: 4.7,
-    baseAlpha: 0.52,
-    color: '#fef9c3',
-  },
-  {
-    id: 19,
-    spawnX: 0.52,
-    initialOffsetY: 0.50,
-    verticalLoops: 1,
+    baseX: 0.22,
+    baseY: 0.70,
+    hoverRadiusX: 0.014,
+    hoverRadiusY: 0.012,
+    freqX: 1,
+    freqY: 1,
+    phaseX: 1.2,
+    phaseY: 1.6,
     radiusScale: 0.0030,
-    swayAmp: 0.014,
-    swayHarmonic: 1,
-    swayPhase: 1.5,
-    twinkleHarmonic: 2,
-    twinklePhase: 1.7,
-    baseAlpha: 0.47,
-    color: '#fef08a',
-  },
-  {
-    id: 20,
-    spawnX: 0.88,
-    initialOffsetY: 0.40,
-    verticalLoops: 1,
-    radiusScale: 0.0042,
-    swayAmp: 0.020,
-    swayHarmonic: 1,
-    swayPhase: 2.8,
-    twinkleHarmonic: 1,
-    twinklePhase: 3.0,
-    baseAlpha: 0.55,
-    color: '#fde047',
-  },
-  {
-    id: 21,
-    spawnX: 0.24,
-    initialOffsetY: 0.96,
-    verticalLoops: 1,
-    radiusScale: 0.0038,
-    swayAmp: 0.018,
-    swayHarmonic: 1,
-    swayPhase: 5.4,
-    twinkleHarmonic: 2,
-    twinklePhase: 5.6,
-    baseAlpha: 0.53,
-    color: '#fffbeb',
+    twinklePhase: 1.4,
+    baseAlpha: 0.30,
   },
 ];
 
 /**
- * Intensity configuration multiplier and item counts
+ * Intensity parameters for Sunlight Mask v2
  */
-interface IntensityTuning {
-  patchCount: number;
-  particleCount: number;
-  globalAlphaMult: number;
+interface IntensityConfig {
+  beamCount: number;
+  beamAlphaMult: number;
+  beamWidthMult: number;
   ambientWarmthAlpha: number;
-  particleAlphaMult: number;
+  dustMoteCount: number;
 }
 
-const INTENSITY_SETTINGS: Record<MaskIntensity, IntensityTuning> = {
+const INTENSITY_CONFIGS: Record<MaskIntensity, IntensityConfig> = {
   weak: {
-    patchCount: 5,
-    particleCount: 8,
-    globalAlphaMult: 0.75,
-    ambientWarmthAlpha: 0.025,
-    particleAlphaMult: 0.65,
+    beamCount: 2, // 2 delicate, whisper-soft light streams
+    beamAlphaMult: 0.70,
+    beamWidthMult: 0.85,
+    ambientWarmthAlpha: 0.020,
+    dustMoteCount: 2, // only 2 tiny dust specks
   },
   medium: {
-    patchCount: 9,
-    particleCount: 15,
-    globalAlphaMult: 1.0,
-    ambientWarmthAlpha: 0.040,
-    particleAlphaMult: 1.0,
+    beamCount: 3, // 3 standard, natural morning/afternoon sunbeams
+    beamAlphaMult: 1.0,
+    beamWidthMult: 1.0,
+    ambientWarmthAlpha: 0.035,
+    dustMoteCount: 3, // 3 tiny dust specks
   },
   strong: {
-    patchCount: 13,
-    particleCount: 22,
-    globalAlphaMult: 1.35,
-    ambientWarmthAlpha: 0.065,
-    particleAlphaMult: 1.25,
+    beamCount: 4, // 4 rich sunbeams with slightly fuller presence
+    beamAlphaMult: 1.30,
+    beamWidthMult: 1.15,
+    ambientWarmthAlpha: 0.055,
+    dustMoteCount: 5, // 5 tiny dust specks max
   },
 };
 
 /**
- * Render Sunlight Mask v1 onto the 2D Canvas context.
+ * Render Sunlight Mask v2 onto the 2D Canvas context.
  *
  * Guaranteed characteristics:
- * - Deterministic, smooth, pure-function time evaluation.
- * - Perfectly seamless 4000ms loop period (no discontinuities or frame skips).
- * - Gentle canopy light (木漏れ日) with organic soft falloff that enhances photos.
- * - Never obscures text or avatar (central zone is softly vignettes away from bokeh centers).
+ * - 2 to 4 diagonal volumetric light beams (光帯・光芒) streaming gently from above.
+ * - Smooth lateral traversal & breathing pulse (sinusoidal, 100% seamless loop).
+ * - Central spine has the highest illumination and feathers out into invisibility.
+ * - No carbonated/bubbling upward particles: replaced by minimal stationary hovering dust motes.
+ * - Avoids harsh lens flare, flat whiteouts, or obstructing avatar/text.
  */
 export function renderSunlightMask(
   ctx: CanvasRenderingContext2D,
@@ -702,139 +300,187 @@ export function renderSunlightMask(
   const twoPi = Math.PI * 2;
   const timeRad = normTime * twoPi;
 
-  const tuning = INTENSITY_SETTINGS[config.intensity] || INTENSITY_SETTINGS.medium;
+  const tuning = INTENSITY_CONFIGS[config.intensity] || INTENSITY_CONFIGS.medium;
   const minDim = Math.min(width, height);
+  const maxDim = Math.max(width, height);
 
   ctx.save();
 
-  // 1. Subtle Ambient Warmth Shimmer Layer
-  // Gives the overall photo a warm, sunlit afternoon cast without washing out highlights.
-  const ambientPulse = 0.5 + 0.5 * Math.sin(timeRad - Math.PI * 0.25);
-  const effectiveAmbientAlpha = tuning.ambientWarmthAlpha * (0.85 + 0.15 * ambientPulse);
-
-  if (effectiveAmbientAlpha > 0.005) {
+  // 1. Gentle Sky Source Bloom (画面上部の木漏れ日・天窓の源泉となる淡い光溜まり)
+  // Soft radial warmth anchored at top-left/center to give the beams a natural origin point
+  if (tuning.ambientWarmthAlpha > 0.005) {
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    const ambGrad = ctx.createRadialGradient(
-      width * 0.5,
-      height * 0.15,
-      minDim * 0.1,
-      width * 0.5,
-      height * 0.5,
-      minDim * 1.1
+    const skyGrad = ctx.createRadialGradient(
+      width * 0.25,
+      -height * 0.05,
+      minDim * 0.08,
+      width * 0.35,
+      height * 0.30,
+      maxDim * 0.85
     );
-    ambGrad.addColorStop(0, `rgba(254, 240, 138, ${effectiveAmbientAlpha * 1.4})`);
-    ambGrad.addColorStop(0.5, `rgba(253, 230, 138, ${effectiveAmbientAlpha})`);
-    ambGrad.addColorStop(1, `rgba(245, 158, 11, 0)`);
+    const pulse = 0.5 + 0.5 * Math.sin(timeRad - Math.PI * 0.2);
+    const skyAlpha = tuning.ambientWarmthAlpha * (0.85 + 0.15 * pulse);
 
-    ctx.fillStyle = ambGrad;
+    skyGrad.addColorStop(0, `rgba(255, 252, 235, ${skyAlpha * 1.5})`);
+    skyGrad.addColorStop(0.35, `rgba(254, 243, 199, ${skyAlpha * 0.8})`);
+    skyGrad.addColorStop(1, 'rgba(251, 191, 36, 0)');
+
+    ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, width, height);
     ctx.restore();
   }
 
-  // 2. Dappled Sunlight Bokeh Patches (木漏れ日)
-  // Drawn with 'screen' composite mode to blend warmly and naturally with the underlying base photo.
+  // 2. Volumetric Light Beams / Crepuscular Rays (天から差し込む柔らかな光の帯・光芒)
+  // Drawn using 'screen' blending to naturally illuminate underlying colors without muddying.
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
 
-  const patchesToRender = SUNLIGHT_PATCHES.slice(0, tuning.patchCount);
-  for (const patch of patchesToRender) {
-    // Harmonic smooth drift around base center
-    const driftX = Math.sin(timeRad * patch.driftFreq + patch.driftPhase) * patch.driftAmpX * width;
-    const driftY = Math.cos(timeRad * patch.driftFreq + patch.driftPhase * 1.2) * patch.driftAmpY * height;
+  const beamsToRender = SUNLIGHT_BEAMS.slice(0, tuning.beamCount);
 
-    const currentX = patch.cx * width + driftX;
-    const currentY = patch.cy * height + driftY;
+  for (const beam of beamsToRender) {
+    // Harmonic lateral sway of the beam origin (smooth continuous sine wave)
+    const swayX = Math.sin(timeRad * beam.harmonic + beam.phase) * beam.swayOriginXAmp * width;
+    const originX = beam.originX * width + swayX;
+    const originY = beam.originY * height;
 
-    // Gentle breathing pulse of radius and brightness
-    const pulsePhase = timeRad * patch.pulseHarmonic + patch.pulsePhase;
-    const pulseSin = Math.sin(pulsePhase);
+    // Subtle angle oscillation (mimics gentle wind swaying overhead canopy)
+    const angleOsc = Math.sin(timeRad * beam.harmonic + beam.phase * 1.3) * beam.swayAngleAmp;
+    const currentAngle = beam.baseAngle + angleOsc;
 
-    // Scale breathes gently by ±6%
-    const currentRadius = patch.radiusScale * minDim * (1.0 + 0.06 * pulseSin);
+    // Breathing pulse of beam brightness
+    const breath = 0.5 + 0.5 * Math.sin(timeRad * beam.harmonic + beam.breathPhase);
+    // Subtle mottling wave for foliage fluttering
+    const foliageMottle = 0.5 + 0.5 * Math.sin(timeRad * (beam.mottlingHarmonic * 2) + beam.phase);
+    const combinedBreath = breath * 0.8 + foliageMottle * 0.2;
 
-    // Opacity gently breathes
-    const patchAlpha = Math.max(
-      0.02,
-      (patch.baseAlpha + patch.alphaAmp * pulseSin) * tuning.globalAlphaMult
-    );
+    const currentAlpha = (beam.baseAlpha + beam.alphaAmp * (combinedBreath - 0.5) * 2) * tuning.beamAlphaMult;
+    if (currentAlpha <= 0.015) {
+      continue;
+    }
+
+    // Geometry of the trapezoidal beam
+    const beamLength = beam.lengthScale * height;
+    const topHalfWidth = (beam.topWidthScale * tuning.beamWidthMult * minDim) * 0.5;
+    const bottomHalfWidth = (beam.bottomWidthScale * tuning.beamWidthMult * minDim) * 0.5;
+
+    // Unit vectors along and perpendicular to the beam axis
+    const dirX = Math.cos(currentAngle);
+    const dirY = Math.sin(currentAngle);
+    const perpX = -dirY;
+    const perpY = dirX;
+
+    // Calculate the 4 trapezoid corners in canvas space
+    // Top corners
+    const t1x = originX - perpX * topHalfWidth;
+    const t1y = originY - perpY * topHalfWidth;
+    const t2x = originX + perpX * topHalfWidth;
+    const t2y = originY + perpY * topHalfWidth;
+
+    // Bottom corners along beam direction
+    const endCenterX = originX + dirX * beamLength;
+    const endCenterY = originY + dirY * beamLength;
+    const b1x = endCenterX - perpX * bottomHalfWidth;
+    const b1y = endCenterY - perpY * bottomHalfWidth;
+    const b2x = endCenterX + perpX * bottomHalfWidth;
+    const b2y = endCenterY + perpY * bottomHalfWidth;
+
+    // Multi-pass volumetric rendering:
+    // Pass A: Broad, soft diffuse body of the light beam (feathered out to edges)
+    // Pass B: Narrow, glowing spinal core along the central axis of the ray
+    ctx.save();
+
+    // Clip to trapezoid polygon for exact beam containment with soft anti-aliasing
+    ctx.beginPath();
+    ctx.moveTo(t1x, t1y);
+    ctx.lineTo(t2x, t2y);
+    ctx.lineTo(b2x, b2y);
+    ctx.lineTo(b1x, b1y);
+    ctx.closePath();
+
+    // Longitudinal fade (fades gently as the beam travels deeper down toward earth)
+    // and lateral gradient (brightest at axis, 0 at flanks)
+    // We construct a localized transform along the beam's centerline to paint the longitudinal and lateral falloffs.
+    ctx.clip();
 
     ctx.save();
-    ctx.translate(currentX, currentY);
-    ctx.rotate(patch.rotation);
-    ctx.scale(patch.aspect, 1.0);
+    ctx.translate(originX, originY);
+    ctx.rotate(currentAngle - Math.PI * 0.5); // align local Y axis along beam direction
 
-    // Soft-edged radial gradient simulating out-of-focus foliage sunlight
-    const radGrad = ctx.createRadialGradient(0, 0, currentRadius * 0.05, 0, 0, currentRadius);
-    radGrad.addColorStop(0, `${patch.coreColor}${patchAlpha})`);
-    radGrad.addColorStop(0.35, `${patch.midColor}${patchAlpha * 0.72})`);
-    radGrad.addColorStop(0.70, `${patch.midColor}${patchAlpha * 0.28})`);
-    radGrad.addColorStop(1, `${patch.midColor}0)`);
+    // Longitudinal gradient from beam entrance to bottom disappearance
+    const maxLocalY = beamLength;
+    const longGrad = ctx.createLinearGradient(0, 0, 0, maxLocalY);
+    longGrad.addColorStop(0, `rgba(255, 255, 255, ${currentAlpha * 0.85})`);
+    longGrad.addColorStop(0.20, `rgba(255, 255, 255, ${currentAlpha})`);
+    longGrad.addColorStop(0.65, `rgba(255, 255, 255, ${currentAlpha * 0.60})`);
+    longGrad.addColorStop(1, `rgba(255, 255, 255, 0)`);
 
-    ctx.fillStyle = radGrad;
-    ctx.beginPath();
-    ctx.arc(0, 0, currentRadius, 0, twoPi);
-    ctx.fill();
+    // Lateral gradient (center spine to outer boundary)
+    // We paint across the local X bounds
+    const maxLateral = bottomHalfWidth * 1.05;
+    const latGrad = ctx.createLinearGradient(-maxLateral, 0, maxLateral, 0);
+    latGrad.addColorStop(0, `${beam.flankColor}0)`);
+    latGrad.addColorStop(0.22, `${beam.flankColor}${currentAlpha * 0.25})`);
+    latGrad.addColorStop(0.42, `${beam.coreColor}${currentAlpha * 0.70})`);
+    latGrad.addColorStop(0.50, `${beam.coreColor}${currentAlpha * 0.95})`);
+    latGrad.addColorStop(0.58, `${beam.coreColor}${currentAlpha * 0.70})`);
+    latGrad.addColorStop(0.78, `${beam.flankColor}${currentAlpha * 0.25})`);
+    latGrad.addColorStop(1, `${beam.flankColor}0)`);
+
+    // Render lateral beam color
+    ctx.fillStyle = latGrad;
+    ctx.fillRect(-maxLateral, 0, maxLateral * 2, maxLocalY);
+
+    // Apply longitudinal falloff via 'destination-in' to smoothly taper light as it reaches the bottom
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = longGrad;
+    ctx.fillRect(-maxLateral, 0, maxLateral * 2, maxLocalY);
+
+    ctx.restore();
 
     ctx.restore();
   }
   ctx.restore();
 
-  // 3. Micro Light Particles (微細光粒子)
-  // Slowly ascend and sway like dust motes catching sunlight beams.
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
+  // 3. Sunlit Dust Motes (微細な光埃 - 泡ではなく、光の筋の中でほんの数粒が静かに舞い漂う表現)
+  // No rapid upward rising motion. Each particle hovers gently in place inside the sunlit area.
+  if (tuning.dustMoteCount > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
 
-  const particlesToRender = SUNLIGHT_PARTICLES.slice(0, tuning.particleCount);
-  for (const p of particlesToRender) {
-    // Upward drift loop (from 1.08 down to -0.08 normalized Y)
-    const startY = 1.08;
-    const endY = -0.08;
-    const spanY = startY - endY;
+    const motesToRender = SUNLIT_DUST_MOTES.slice(0, tuning.dustMoteCount);
+    for (const mote of motesToRender) {
+      // Gentle micro-hovering in a small Lissajous loop (no directional rushing)
+      const hoverX = Math.sin(timeRad * mote.freqX + mote.phaseX) * mote.hoverRadiusX * width;
+      const hoverY = Math.cos(timeRad * mote.freqY + mote.phaseY) * mote.hoverRadiusY * height;
 
-    const loopProgress = ((normTime * p.verticalLoops + p.initialOffsetY) % 1.0 + 1.0) % 1.0;
-    const normY = startY - loopProgress * spanY;
+      const px = mote.baseX * width + hoverX;
+      const py = mote.baseY * height + hoverY;
 
-    // Horizontal gentle sway
-    const swayX = Math.sin(timeRad * p.swayHarmonic + p.swayPhase) * p.swayAmp;
-    const normX = p.spawnX + swayX;
+      // Subtle slow twinkle
+      const twinkle = 0.5 + 0.5 * Math.sin(timeRad + mote.twinklePhase);
+      const effectiveAlpha = mote.baseAlpha * (0.65 + 0.35 * twinkle) * tuning.beamAlphaMult;
 
-    const px = normX * width;
-    const py = normY * height;
+      if (effectiveAlpha <= 0.02) {
+        continue;
+      }
 
-    // Twinkle modulation
-    const twinkle = 0.5 + 0.5 * Math.sin(timeRad * p.twinkleHarmonic + p.twinklePhase);
-    const particleAlpha = p.baseAlpha * (0.6 + 0.4 * twinkle) * tuning.particleAlphaMult;
+      const r = mote.radiusScale * minDim;
 
-    // Edge fade-out at top and bottom margins so particles enter and exit smoothly
-    let edgeFade = 1.0;
-    if (normY > 1.0) {
-      edgeFade = Math.max(0, (1.08 - normY) / 0.08);
-    } else if (normY < 0.0) {
-      edgeFade = Math.max(0, (normY - (-0.08)) / 0.08);
+      // Soft sunlit mote glow
+      const moteGrad = ctx.createRadialGradient(px, py, 0, px, py, r * 2.5);
+      moteGrad.addColorStop(0, `rgba(255, 255, 245, ${effectiveAlpha * 0.95})`);
+      moteGrad.addColorStop(0.4, `rgba(254, 243, 199, ${effectiveAlpha * 0.65})`);
+      moteGrad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+
+      ctx.fillStyle = moteGrad;
+      ctx.beginPath();
+      ctx.arc(px, py, r * 2.5, 0, twoPi);
+      ctx.fill();
     }
 
-    const effectiveAlpha = particleAlpha * edgeFade;
-    if (effectiveAlpha <= 0.02) {
-      continue;
-    }
-
-    const r = p.radiusScale * minDim;
-
-    // Soft glowing particle
-    const partGrad = ctx.createRadialGradient(px, py, 0, px, py, r * 2.2);
-    partGrad.addColorStop(0, `rgba(255, 255, 255, ${effectiveAlpha * 0.95})`);
-    partGrad.addColorStop(0.35, `${p.color}`);
-    partGrad.addColorStop(1, 'rgba(253, 224, 71, 0)');
-
-    ctx.globalAlpha = effectiveAlpha;
-    ctx.fillStyle = partGrad;
-    ctx.beginPath();
-    ctx.arc(px, py, r * 2.2, 0, twoPi);
-    ctx.fill();
+    ctx.restore();
   }
-
-  ctx.restore();
 
   ctx.restore();
 }
