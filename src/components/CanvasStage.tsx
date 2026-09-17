@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { BaseImageState, SceneMotionId, StampItem } from '../engine/types.ts';
+import { BaseImageState, MaskConfig, SceneMotionId, StampItem } from '../engine/types.ts';
 import { renderScene } from '../engine/renderer.ts';
 import { createInitialGestureState, GestureState, hitTestRotateHandle, hitTestStamp } from '../engine/gestures.ts';
 import { POC_CONFIG } from '../engine/config.ts';
@@ -17,6 +17,7 @@ interface CanvasStageProps {
   selectedStampId: string | null;
   sceneMotionId: SceneMotionId;
   sceneMotionTrigger?: number;
+  maskConfig?: MaskConfig;
   isFinishedMode: boolean;
   onSelectStamp: (id: string | null) => void;
   onUpdateStamp: (stamp: StampItem) => void;
@@ -30,6 +31,7 @@ export default function CanvasStage({
   selectedStampId,
   sceneMotionId,
   sceneMotionTrigger,
+  maskConfig,
   isFinishedMode,
   onSelectStamp,
   onUpdateStamp,
@@ -46,6 +48,9 @@ export default function CanvasStage({
 
   const selectedStampIdRef = useRef<string | null>(selectedStampId);
   selectedStampIdRef.current = selectedStampId;
+
+  const maskConfigRef = useRef<MaskConfig | undefined>(maskConfig);
+  maskConfigRef.current = maskConfig;
 
   const sceneMotionIdRef = useRef<SceneMotionId>(sceneMotionId);
   sceneMotionIdRef.current = sceneMotionId;
@@ -154,8 +159,10 @@ export default function CanvasStage({
               selectedStampId: selectedStampIdRef.current,
               activeManipulatingId: gestureStateRef.current.activeStampId,
               dpr: displayMetrics.dpr,
+              maskConfig: maskConfigRef.current,
             },
-            sceneElapsedMs
+            sceneElapsedMs,
+            maskConfigRef.current
           );
         }
       }

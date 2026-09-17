@@ -9,14 +9,16 @@
  * - Renders selection bounding indicator & transform hints
  */
 
-import { BaseImageState, SceneMotionId, StampItem } from './types.ts';
+import { BaseImageState, MaskConfig, SceneMotionId, StampItem } from './types.ts';
 import { getMotionRecipe, getSceneMotionRecipe } from './motion.ts';
+import { renderAutumnMask } from './masks/autumnMask.ts';
 
 export interface RenderOptions {
   isInteractivePreview?: boolean;
   selectedStampId?: string | null;
   activeManipulatingId?: string | null;
   dpr?: number;
+  maskConfig?: MaskConfig;
 }
 
 /**
@@ -280,7 +282,8 @@ export function renderScene(
   sceneMotionId: SceneMotionId = 'none',
   totalDurationMs?: number,
   options: RenderOptions = {},
-  sceneTimeMs?: number
+  sceneTimeMs?: number,
+  maskConfig?: MaskConfig
 ): void {
   // Clear canvas
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -347,6 +350,13 @@ export function renderScene(
       ctx.lineTo(canvasWidth, y);
       ctx.stroke();
     }
+  }
+
+  // --- Layer 1.5: Atmosphere Mask Layer (Autumn Mask v1) ---
+  // Fixed Drawing Order: Base Image -> Autumn Mask -> User-added stamps / text
+  const activeMask = maskConfig || options.maskConfig;
+  if (activeMask && activeMask.type === 'autumn') {
+    renderAutumnMask(ctx, activeMask, canvasWidth, canvasHeight, timeMs, totalDurationMs);
   }
 
   // --- Layer 2: Stamps & Foreground Items in sequence ---

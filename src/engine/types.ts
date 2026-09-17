@@ -7,6 +7,17 @@ export type StampType = 'star' | 'heart' | 'circle' | 'foreground_image';
 export type MotionId = 'none' | 'bounce' | 'rotate' | 'pulse';
 
 /**
+ * Mask Types & Intensities (e.g. Atmospheric Autumn Mask v1)
+ */
+export type MaskType = 'none' | 'autumn';
+export type MaskIntensity = 'weak' | 'medium' | 'strong';
+
+export interface MaskConfig {
+  type: MaskType;
+  intensity: MaskIntensity;
+}
+
+/**
  * Scene Motion IDs (Controls the entire artwork presentation, distinct from Item Motion)
  */
 export type SceneMotionId = 'none' | 'fade_in' | 'gentle_zoom' | 'fade_and_zoom' | 'dramatic_entrance' | 'slow_dramatic_zoom';

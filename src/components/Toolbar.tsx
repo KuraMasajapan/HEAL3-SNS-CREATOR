@@ -9,17 +9,19 @@
  */
 
 import React, { useRef } from 'react';
-import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors } from 'lucide-react';
-import { MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
+import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles } from 'lucide-react';
+import { MaskConfig, MaskIntensity, MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
 import { MOTION_RECIPES, SCENE_MOTION_RECIPES } from '../engine/motion.ts';
 
 interface ToolbarProps {
   stamps: StampItem[];
   selectedStamp: StampItem | null;
   sceneMotionId: SceneMotionId;
+  maskConfig: MaskConfig;
   hasBaseImage?: boolean;
   onOpenAvatarExtract?: () => void;
   onUpdateSceneMotion: (sceneMotionId: SceneMotionId) => void;
+  onUpdateMask: (maskConfig: MaskConfig) => void;
   onAddStamp: (type: StampType) => void;
   onAddForegroundSample: () => void;
   onAddForegroundFile: (file: File) => void;
@@ -43,9 +45,11 @@ export default function Toolbar({
   stamps,
   selectedStamp,
   sceneMotionId,
+  maskConfig,
   hasBaseImage,
   onOpenAvatarExtract,
   onUpdateSceneMotion,
+  onUpdateMask,
   onAddStamp,
   onAddForegroundSample,
   onAddForegroundFile,
@@ -120,6 +124,71 @@ export default function Toolbar({
             <RotateCcw className="w-3 h-3" />
             <span>再生</span>
           </button>
+        )}
+      </div>
+
+      {/* Mask Selection Bar (Autumn Mask v1) */}
+      <div id="mask-controls-bar" className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-neutral-800/60">
+        <div className="flex items-center gap-1 text-[11px] font-semibold text-neutral-400 pl-0.5 flex-shrink-0">
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <span>Mask:</span>
+        </div>
+
+        {/* None button */}
+        <button
+          id="btn-mask-none"
+          onClick={() => onUpdateMask({ ...maskConfig, type: 'none' })}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1 flex-shrink-0 ${
+            maskConfig.type === 'none'
+              ? 'bg-neutral-700/80 text-white border-neutral-500 font-semibold shadow-sm'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <span>None</span>
+          {maskConfig.type === 'none' && <span className="w-1.5 h-1.5 rounded-full bg-neutral-300" />}
+        </button>
+
+        {/* Autumn button */}
+        <button
+          id="btn-mask-autumn"
+          onClick={() => onUpdateMask({ ...maskConfig, type: 'autumn' })}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1 flex-shrink-0 ${
+            maskConfig.type === 'autumn'
+              ? 'bg-amber-600/30 text-amber-200 border-amber-500/60 font-semibold shadow-sm shadow-amber-500/10'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <span>🍁 Autumn</span>
+          {maskConfig.type === 'autumn' && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+        </button>
+
+        {/* Intensity Selection: Displayed ONLY when Autumn is selected */}
+        {maskConfig.type === 'autumn' && (
+          <div id="mask-intensity-group" className="flex items-center gap-1 pl-1.5 ml-0.5 border-l border-neutral-700/60 flex-shrink-0">
+            <span className="text-[10px] text-amber-300/80 font-medium mr-0.5 flex-shrink-0">強さ:</span>
+            {(['weak', 'medium', 'strong'] as const).map((intensity) => {
+              const isSelected = maskConfig.intensity === intensity;
+              const labels: Record<MaskIntensity, string> = {
+                weak: 'Weak',
+                medium: 'Medium',
+                strong: 'Strong',
+              };
+              return (
+                <button
+                  key={intensity}
+                  id={`btn-mask-intensity-${intensity}`}
+                  onClick={() => onUpdateMask({ ...maskConfig, intensity })}
+                  className={`text-[10px] font-medium px-2 py-0.5 rounded-md border transition whitespace-nowrap active:scale-95 flex-shrink-0 ${
+                    isSelected
+                      ? 'bg-amber-500 text-neutral-950 font-bold border-amber-400 shadow-sm shadow-amber-500/20'
+                      : 'bg-neutral-800/80 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/70 hover:text-neutral-300'
+                  }`}
+                >
+                  {labels[intensity]}
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
 
