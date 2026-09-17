@@ -316,18 +316,38 @@ export async function runMediaPipeDiagnostics(
         legacySuccess = true;
       } catch (legacyErr: any) {
         const s6Time = Math.round(performance.now() - s6Start);
-        report.createFromOptionsResult = `V1 failed: ${v1Error?.message || 'unknown'} | Legacy failed: ${legacyErr?.message || 'unknown'}`;
+        const v1Name = v1Error?.name || 'Error';
+        const v1Msg = v1Error?.message || String(v1Error || 'Unknown');
+        const legacyName = legacyErr?.name || 'Error';
+        const legacyMsg = legacyErr?.message || String(legacyErr || 'Unknown');
+        const legacyStack = legacyErr?.stack ? String(legacyErr.stack) : '';
+
+        const v1ErrorFormatted = `V1 ERROR: ${v1Name}: ${v1Msg}`;
+        const legacyErrorFormatted = `LEGACY ERROR: ${legacyName}: ${legacyMsg}`;
+        const legacyStackFormatted = legacyStack ? `\n\nLEGACY STACK:\n${legacyStack}` : '';
+
+        const step6Details = `${v1ErrorFormatted}\n\n${legacyErrorFormatted}${legacyStackFormatted}`;
+
+        report.createFromOptionsResult = `${v1ErrorFormatted} | ${legacyErrorFormatted}`;
+
         updateStep(5, {
           status: 'FAILED',
           durationMs: s6Time,
-          details: `Both InteractiveSegmenter and InteractiveSegmenterLegacy failed.`,
+          details: step6Details,
           error: {
-            name: legacyErr?.name || v1Error?.name || 'Error',
-            message: `InteractiveSegmenter: ${v1Error?.message || 'FAILED'}; Legacy: ${legacyErr?.message || 'FAILED'}`,
-            stack: legacyErr?.stack || v1Error?.stack,
+            name: 'STEP 6 Engine Failures',
+            message: `${v1ErrorFormatted}\n\n${legacyErrorFormatted}`,
+            stack: `${v1ErrorFormatted}\n${v1Error?.stack ? `${v1Error.stack}\n\n` : ''}${legacyErrorFormatted}\n${legacyStack ? `${legacyStack}` : '(No legacy stack)'}`,
           },
         });
-        throw { step: 6, err: legacyErr || v1Error };
+        throw {
+          step: 6,
+          err: {
+            name: 'STEP 6 Engine Failures',
+            message: `${v1ErrorFormatted}\n\n${legacyErrorFormatted}`,
+            stack: `${legacyErrorFormatted}\n${legacyStack}\n\n${v1ErrorFormatted}\n${v1Error?.stack || ''}`,
+          },
+        };
       }
     }
 

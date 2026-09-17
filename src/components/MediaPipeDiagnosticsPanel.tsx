@@ -198,19 +198,19 @@ export const MediaPipeDiagnosticsPanel: React.FC<Props> = ({
                 </div>
 
                 {step.details && (
-                  <div className="text-[10px] text-zinc-400 mt-1 pl-1 border-l-2 border-zinc-800">
+                  <div className="text-[10px] text-zinc-400 mt-1 pl-1 border-l-2 border-zinc-800 whitespace-pre-wrap font-mono">
                     {step.details}
                   </div>
                 )}
 
                 {/* Expanded Error View for Step */}
                 {isExpanded && step.error && (
-                  <div className="mt-2 p-2 rounded-lg bg-red-950/90 border border-red-800 text-[10px] space-y-1">
-                    <div className="font-bold text-red-300">
+                  <div className="mt-2 p-2 rounded-lg bg-red-950/90 border border-red-800 text-[10px] space-y-1 font-mono">
+                    <div className="font-bold text-red-300 whitespace-pre-wrap">
                       {step.error.name}: {step.error.message}
                     </div>
                     {step.error.stack && (
-                      <pre className="p-1.5 rounded bg-black/80 font-mono text-[9px] text-red-200 overflow-x-auto whitespace-pre-wrap max-h-32">
+                      <pre className="p-1.5 rounded bg-black/80 font-mono text-[9px] text-red-200 overflow-x-auto whitespace-pre-wrap max-h-48">
                         {step.error.stack}
                       </pre>
                     )}
