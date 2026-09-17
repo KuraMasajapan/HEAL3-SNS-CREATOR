@@ -7,9 +7,9 @@ export type StampType = 'star' | 'heart' | 'circle' | 'foreground_image';
 export type MotionId = 'none' | 'bounce' | 'rotate' | 'pulse';
 
 /**
- * Mask Types & Intensities (e.g. Atmospheric Autumn Mask v1)
+ * Mask Types & Intensities (e.g. Atmospheric Autumn Mask v1, Sunlight Mask v1)
  */
-export type MaskType = 'none' | 'autumn';
+export type MaskType = 'none' | 'autumn' | 'sunlight';
 export type MaskIntensity = 'weak' | 'medium' | 'strong';
 
 export interface MaskConfig {

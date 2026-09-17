@@ -9,7 +9,7 @@
  */
 
 import React, { useRef } from 'react';
-import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles } from 'lucide-react';
+import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles, Sun } from 'lucide-react';
 import { MaskConfig, MaskIntensity, MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
 import { MOTION_RECIPES, SCENE_MOTION_RECIPES } from '../engine/motion.ts';
 
@@ -127,7 +127,7 @@ export default function Toolbar({
         )}
       </div>
 
-      {/* Mask Selection Bar (Autumn Mask v1) */}
+      {/* Mask Selection Bar (Autumn Mask v1, Sunlight Mask v1) */}
       <div id="mask-controls-bar" className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-neutral-800/60">
         <div className="flex items-center gap-1 text-[11px] font-semibold text-neutral-400 pl-0.5 flex-shrink-0">
           <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -162,10 +162,29 @@ export default function Toolbar({
           {maskConfig.type === 'autumn' && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
         </button>
 
-        {/* Intensity Selection: Displayed ONLY when Autumn is selected */}
-        {maskConfig.type === 'autumn' && (
+        {/* Sunlight button */}
+        <button
+          id="btn-mask-sunlight"
+          onClick={() => onUpdateMask({ ...maskConfig, type: 'sunlight' })}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1 flex-shrink-0 ${
+            maskConfig.type === 'sunlight'
+              ? 'bg-yellow-500/25 text-yellow-200 border-yellow-400/60 font-semibold shadow-sm shadow-yellow-500/10'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <Sun className="w-3.5 h-3.5 text-yellow-300" />
+          <span>Sunlight</span>
+          {maskConfig.type === 'sunlight' && <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />}
+        </button>
+
+        {/* Intensity Selection: Displayed when Autumn or Sunlight is selected */}
+        {maskConfig.type !== 'none' && (
           <div id="mask-intensity-group" className="flex items-center gap-1 pl-1.5 ml-0.5 border-l border-neutral-700/60 flex-shrink-0">
-            <span className="text-[10px] text-amber-300/80 font-medium mr-0.5 flex-shrink-0">強さ:</span>
+            <span className={`text-[10px] font-medium mr-0.5 flex-shrink-0 ${
+              maskConfig.type === 'sunlight' ? 'text-yellow-300/80' : 'text-amber-300/80'
+            }`}>
+              強さ:
+            </span>
             {(['weak', 'medium', 'strong'] as const).map((intensity) => {
               const isSelected = maskConfig.intensity === intensity;
               const labels: Record<MaskIntensity, string> = {
@@ -173,6 +192,10 @@ export default function Toolbar({
                 medium: 'Medium',
                 strong: 'Strong',
               };
+              const activeColorClass = maskConfig.type === 'sunlight'
+                ? 'bg-yellow-400 text-neutral-950 font-bold border-yellow-300 shadow-sm shadow-yellow-400/20'
+                : 'bg-amber-500 text-neutral-950 font-bold border-amber-400 shadow-sm shadow-amber-500/20';
+
               return (
                 <button
                   key={intensity}
@@ -180,7 +203,7 @@ export default function Toolbar({
                   onClick={() => onUpdateMask({ ...maskConfig, intensity })}
                   className={`text-[10px] font-medium px-2 py-0.5 rounded-md border transition whitespace-nowrap active:scale-95 flex-shrink-0 ${
                     isSelected
-                      ? 'bg-amber-500 text-neutral-950 font-bold border-amber-400 shadow-sm shadow-amber-500/20'
+                      ? activeColorClass
                       : 'bg-neutral-800/80 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/70 hover:text-neutral-300'
                   }`}
                 >

@@ -12,6 +12,7 @@
 import { BaseImageState, MaskConfig, SceneMotionId, StampItem } from './types.ts';
 import { getMotionRecipe, getSceneMotionRecipe } from './motion.ts';
 import { renderAutumnMask } from './masks/autumnMask.ts';
+import { renderSunlightMask } from './masks/sunlightMask.ts';
 
 export interface RenderOptions {
   isInteractivePreview?: boolean;
@@ -352,11 +353,13 @@ export function renderScene(
     }
   }
 
-  // --- Layer 1.5: Atmosphere Mask Layer (Autumn Mask v1) ---
-  // Fixed Drawing Order: Base Image -> Autumn Mask -> User-added stamps / text
+  // --- Layer 1.5: Atmosphere Mask Layer (Autumn Mask v1, Sunlight Mask v1) ---
+  // Fixed Drawing Order: Base Image -> Mask -> User-added stamps / text
   const activeMask = maskConfig || options.maskConfig;
   if (activeMask && activeMask.type === 'autumn') {
     renderAutumnMask(ctx, activeMask, canvasWidth, canvasHeight, timeMs, totalDurationMs);
+  } else if (activeMask && activeMask.type === 'sunlight') {
+    renderSunlightMask(ctx, activeMask, canvasWidth, canvasHeight, timeMs, totalDurationMs);
   }
 
   // --- Layer 2: Stamps & Foreground Items in sequence ---
