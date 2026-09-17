@@ -282,7 +282,7 @@ export async function runMediaPipeDiagnostics(
     try {
       segmenterV1 = await InteractiveSegmenter.createFromOptions(wasmFileset, {
         baseOptions: {
-          modelAssetPath: modelUrl,
+          modelAssetBuffer: new Uint8Array(modelBuffer),
           delegate: 'CPU',
         },
       });
