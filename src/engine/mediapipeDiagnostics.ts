@@ -278,11 +278,11 @@ export async function runMediaPipeDiagnostics(
     let v1Error: any = null;
     let legacySuccess = false;
 
-    // Sub-test 6a: Test the new v1.0 InteractiveSegmenter API and capture exact C++ output
+    // Sub-test 6a: Test the new v1.0 InteractiveSegmenter API with local interactive_segmentation.task
     try {
       segmenterV1 = await InteractiveSegmenter.createFromOptions(wasmFileset, {
         baseOptions: {
-          modelAssetBuffer: new Uint8Array(modelBuffer),
+          modelAssetPath: '/models/interactive_segmentation.task',
           delegate: 'CPU',
         },
       });
@@ -368,7 +368,9 @@ export async function runMediaPipeDiagnostics(
       status: 'OK',
       durationMs: s6Time,
       httpStatus: '200 OK (Engine Created)',
-      details: `${legacyDetail}. (${v1Detail})`,
+      details: globalActiveEngineType === 'InteractiveSegmenter'
+        ? `${v1Detail} [Active Engine]`
+        : `${legacyDetail}. (${v1Detail})`,
     });
 
     // =========================================================================
