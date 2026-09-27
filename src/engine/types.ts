@@ -23,14 +23,17 @@ export interface MaskConfig {
 export type LayoutMode = 'original' | 'character_focus';
 
 /**
- * Map Segment Mode (Minimal PoC: Original vs User Photo Replacement)
+ * Map Segment Mode & Frame Presets (Map Panel Photo Replace PoC)
  */
 export type MapSegmentMode = 'original' | 'photo';
+
+export type MapFramePreset = 'none' | 'pink' | 'green' | 'yellow' | 'white';
 
 export interface MapSegmentState {
   mode: MapSegmentMode;
   photoUrl: string | null;
   photoImage: HTMLImageElement | null;
+  framePreset: MapFramePreset;
 }
 
 /**

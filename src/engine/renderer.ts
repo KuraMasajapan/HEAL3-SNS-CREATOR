@@ -9,7 +9,7 @@
  * - Renders selection bounding indicator & transform hints
  */
 
-import { BaseImageState, LayoutMode, MapSegmentState, MaskConfig, SceneMotionId, StampItem } from './types.ts';
+import { BaseImageState, LayoutMode, MapFramePreset, MapSegmentState, MaskConfig, SceneMotionId, StampItem } from './types.ts';
 import { HEAL3_MAP_SEGMENT_BOUNDS, MapSegmentBounds } from './config.ts';
 import { getMotionRecipe, getSceneMotionRecipe } from './motion.ts';
 import { renderAutumnMask } from './masks/autumnMask.ts';
@@ -330,6 +330,336 @@ export function renderMapSegmentPhoto(
 }
 
 /**
+ * Renders seasonal decorative frame preset over the Map Panel area
+ * (Pink: Spring Blossom, Green: Botanical Leaf, Yellow: Summer Sunshine, White: Polaroid Gallery)
+ */
+export function renderMapPanelFrame(
+  ctx: CanvasRenderingContext2D,
+  preset: MapFramePreset,
+  canvasWidth: number,
+  canvasHeight: number,
+  bounds: MapSegmentBounds = HEAL3_MAP_SEGMENT_BOUNDS
+): void {
+  if (preset === 'none') return;
+
+  const segX = bounds.x * canvasWidth;
+  const segY = bounds.y * canvasHeight;
+  const segW = bounds.width * canvasWidth;
+  const segH = bounds.height * canvasHeight;
+  const segRadius = (bounds.borderRadius ?? 0) * canvasWidth;
+
+  if (segW <= 0 || segH <= 0) return;
+
+  ctx.save();
+
+  const strokeW = Math.max(3.5, Math.round(canvasWidth * 0.013));
+  const minDim = Math.min(segW, segH);
+
+  // Helper to trace rounded rectangle path
+  const traceRect = (x: number, y: number, w: number, h: number, r: number) => {
+    ctx.beginPath();
+    if (r > 0 && typeof ctx.roundRect === 'function') {
+      ctx.roundRect(x, y, w, h, r);
+    } else if (r > 0) {
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.arcTo(x + w, y, x + w, y + r, r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+      ctx.lineTo(x + r, y + h);
+      ctx.arcTo(x, y + h, x, y + h - r, r);
+      ctx.lineTo(x, y + r);
+      ctx.arcTo(x, y, x + r, y, r);
+      ctx.closePath();
+    } else {
+      ctx.rect(x, y, w, h);
+    }
+  };
+
+  switch (preset) {
+    case 'pink': {
+      // --- Pink Frame: Spring Sakura & Blossom ---
+      // Outer soft glow
+      ctx.shadowColor = 'rgba(244, 114, 182, 0.45)';
+      ctx.shadowBlur = strokeW * 1.5;
+
+      // Main gradient border
+      const grad = ctx.createLinearGradient(segX, segY, segX + segW, segY + segH);
+      grad.addColorStop(0, '#fbcfe8'); // soft sakura pink
+      grad.addColorStop(0.5, '#f472b6'); // rose pink
+      grad.addColorStop(1, '#fb7185'); // vibrant coral pink
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = strokeW;
+      traceRect(segX, segY, segW, segH, segRadius);
+      ctx.stroke();
+
+      // Reset shadow for crisp inner hairline
+      ctx.shadowColor = 'transparent';
+      const inset = strokeW * 0.7;
+      const innerRadius = Math.max(2, segRadius - inset);
+      ctx.strokeStyle = 'rgba(255, 245, 247, 0.75)';
+      ctx.lineWidth = Math.max(1, strokeW * 0.22);
+      traceRect(segX + inset, segY + inset, segW - inset * 2, segH - inset * 2, innerRadius);
+      ctx.stroke();
+
+      // Motif: Top-Left Sakura Flower
+      const flowerCx = segX + segRadius * 0.75 + strokeW * 0.4;
+      const flowerCy = segY + segRadius * 0.75 + strokeW * 0.4;
+      const petalR = minDim * 0.042;
+
+      ctx.save();
+      ctx.translate(flowerCx, flowerCy);
+      // 5 petals
+      for (let i = 0; i < 5; i++) {
+        const angle = (i * Math.PI * 2) / 5 - Math.PI / 2;
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.ellipse(0, -petalR * 0.9, petalR * 0.55, petalR * 0.85, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#fce7f3';
+        ctx.fill();
+        ctx.strokeStyle = '#f472b6';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      }
+      // Core pistil
+      ctx.beginPath();
+      ctx.arc(0, 0, petalR * 0.35, 0, Math.PI * 2);
+      ctx.fillStyle = '#fef08a';
+      ctx.fill();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+
+      // Motif: Bottom-Right floating sakura petals
+      const petalBx = segX + segW - segRadius * 0.7 - strokeW * 0.5;
+      const petalBy = segY + segH - segRadius * 0.7 - strokeW * 0.5;
+      const drawPetal = (px: number, py: number, rot: number, scale: number) => {
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate((rot * Math.PI) / 180);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, petalR * 0.45 * scale, petalR * 0.85 * scale, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#fda4af';
+        ctx.fill();
+        ctx.strokeStyle = '#f472b6';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      };
+      drawPetal(petalBx - petalR * 0.6, petalBy - petalR * 0.4, 25, 0.9);
+      drawPetal(petalBx + petalR * 0.4, petalBy + petalR * 0.3, -35, 0.7);
+      break;
+    }
+
+    case 'green': {
+      // --- Green Frame: Fresh Botanical Leaf & Sprout ---
+      // Outer soft glow
+      ctx.shadowColor = 'rgba(16, 185, 129, 0.4)';
+      ctx.shadowBlur = strokeW * 1.5;
+
+      // Main gradient border
+      const grad = ctx.createLinearGradient(segX, segY, segX + segW, segY + segH);
+      grad.addColorStop(0, '#a7f3d0'); // mint green
+      grad.addColorStop(0.5, '#34d399'); // fresh emerald
+      grad.addColorStop(1, '#059669'); // forest green
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = strokeW;
+      traceRect(segX, segY, segW, segH, segRadius);
+      ctx.stroke();
+
+      // Inset hairline
+      ctx.shadowColor = 'transparent';
+      const inset = strokeW * 0.7;
+      const innerRadius = Math.max(2, segRadius - inset);
+      ctx.strokeStyle = 'rgba(236, 253, 245, 0.8)';
+      ctx.lineWidth = Math.max(1, strokeW * 0.22);
+      traceRect(segX + inset, segY + inset, segW - inset * 2, segH - inset * 2, innerRadius);
+      ctx.stroke();
+
+      // Motif: Top-Left Botanical Sprout (twin leaves)
+      const leafCx = segX + segRadius * 0.75 + strokeW * 0.4;
+      const leafCy = segY + segRadius * 0.75 + strokeW * 0.4;
+      const leafR = minDim * 0.048;
+
+      ctx.save();
+      ctx.translate(leafCx, leafCy);
+
+      const drawLeaf = (rot: number, scale: number) => {
+        ctx.save();
+        ctx.rotate((rot * Math.PI) / 180);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(leafR * 0.5 * scale, -leafR * 0.5 * scale, 0, -leafR * scale);
+        ctx.quadraticCurveTo(-leafR * 0.5 * scale, -leafR * 0.5 * scale, 0, 0);
+        ctx.fillStyle = '#6ee7b7';
+        ctx.fill();
+        ctx.strokeStyle = '#059669';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        // Center rib line
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -leafR * 0.85 * scale);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      drawLeaf(-28, 1.0);
+      drawLeaf(36, 0.82);
+
+      // Sprout root dot
+      ctx.beginPath();
+      ctx.arc(0, 0, leafR * 0.18, 0, Math.PI * 2);
+      ctx.fillStyle = '#059669';
+      ctx.fill();
+      ctx.restore();
+
+      // Motif: Bottom-Right delicate single leaf
+      const leafBx = segX + segW - segRadius * 0.7 - strokeW * 0.5;
+      const leafBy = segY + segH - segRadius * 0.7 - strokeW * 0.5;
+      ctx.save();
+      ctx.translate(leafBx, leafBy);
+      drawLeaf(135, 0.85);
+      ctx.restore();
+      break;
+    }
+
+    case 'yellow': {
+      // --- Yellow Frame: Summer Sunshine & Warm Mimosa ---
+      // Outer warm glow
+      ctx.shadowColor = 'rgba(245, 158, 11, 0.42)';
+      ctx.shadowBlur = strokeW * 1.5;
+
+      // Main gradient border
+      const grad = ctx.createLinearGradient(segX, segY, segX + segW, segY + segH);
+      grad.addColorStop(0, '#fef08a'); // luminous sunny yellow
+      grad.addColorStop(0.5, '#facc15'); // vibrant gold
+      grad.addColorStop(1, '#f59e0b'); // warm amber
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = strokeW;
+      traceRect(segX, segY, segW, segH, segRadius);
+      ctx.stroke();
+
+      // Inset hairline
+      ctx.shadowColor = 'transparent';
+      const inset = strokeW * 0.7;
+      const innerRadius = Math.max(2, segRadius - inset);
+      ctx.strokeStyle = 'rgba(255, 251, 235, 0.85)';
+      ctx.lineWidth = Math.max(1, strokeW * 0.22);
+      traceRect(segX + inset, segY + inset, segW - inset * 2, segH - inset * 2, innerRadius);
+      ctx.stroke();
+
+      // Motif: Top-Left 4-point Sparkle Star
+      const sunCx = segX + segRadius * 0.75 + strokeW * 0.4;
+      const sunCy = segY + segRadius * 0.75 + strokeW * 0.4;
+      const starR = minDim * 0.052;
+
+      const drawSparkle = (cx: number, cy: number, r: number, rot: number) => {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate((rot * Math.PI) / 180);
+        ctx.beginPath();
+        for (let i = 0; i < 4; i++) {
+          const a = (i * Math.PI) / 2;
+          ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+          const ia = a + Math.PI / 4;
+          ctx.lineTo(Math.cos(ia) * (r * 0.24), Math.sin(ia) * (r * 0.24));
+        }
+        ctx.closePath();
+        ctx.fillStyle = '#fffbeb';
+        ctx.fill();
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // Inner glowing core
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.28, 0, Math.PI * 2);
+        ctx.fillStyle = '#facc15';
+        ctx.fill();
+        ctx.restore();
+      };
+
+      drawSparkle(sunCx, sunCy, starR, 0);
+
+      // Motif: Bottom-Right summer sparkle pair
+      const sunBx = segX + segW - segRadius * 0.7 - strokeW * 0.5;
+      const sunBy = segY + segH - segRadius * 0.7 - strokeW * 0.5;
+      drawSparkle(sunBx, sunBy, starR * 0.75, 18);
+      drawSparkle(sunBx - starR * 0.8, sunBy + starR * 0.2, starR * 0.45, 45);
+      break;
+    }
+
+    case 'white': {
+      // --- White Frame: Clean Winter Pearl / Polaroid Gallery Card ---
+      // Outer card depth shadow to lift the photo panel
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+      ctx.shadowBlur = strokeW * 1.4;
+      ctx.shadowOffsetY = strokeW * 0.3;
+
+      // Solid crisp pearl-white border (slightly wider for gallery presence)
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = strokeW * 1.15;
+      traceRect(segX, segY, segW, segH, segRadius);
+      ctx.stroke();
+
+      // Reset shadow for crisp embossed inset line
+      ctx.shadowColor = 'transparent';
+      const inset = strokeW * 0.8;
+      const innerRadius = Math.max(2, segRadius - inset);
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.16)';
+      ctx.lineWidth = Math.max(1, strokeW * 0.22);
+      traceRect(segX + inset, segY + inset, segW - inset * 2, segH - inset * 2, innerRadius);
+      ctx.stroke();
+
+      // Motif: Clean minimal photo-corner brackets (L-shape corner tabs)
+      const bracketLen = minDim * 0.055;
+      const bracketW = Math.max(1.5, strokeW * 0.3);
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = bracketW;
+      ctx.lineCap = 'round';
+
+      const pad = strokeW * 0.9;
+      // Top-Left L-bracket
+      ctx.beginPath();
+      ctx.moveTo(segX + pad + bracketLen, segY + pad);
+      ctx.lineTo(segX + pad, segY + pad);
+      ctx.lineTo(segX + pad, segY + pad + bracketLen);
+      ctx.stroke();
+
+      // Top-Right L-bracket
+      ctx.beginPath();
+      ctx.moveTo(segX + segW - pad - bracketLen, segY + pad);
+      ctx.lineTo(segX + segW - pad, segY + pad);
+      ctx.lineTo(segX + segW - pad, segY + pad + bracketLen);
+      ctx.stroke();
+
+      // Bottom-Left L-bracket
+      ctx.beginPath();
+      ctx.moveTo(segX + pad, segY + segH - pad - bracketLen);
+      ctx.lineTo(segX + pad, segY + segH - pad);
+      ctx.lineTo(segX + pad + bracketLen, segY + segH - pad);
+      ctx.stroke();
+
+      // Bottom-Right L-bracket
+      ctx.beginPath();
+      ctx.moveTo(segX + segW - pad - bracketLen, segY + segH - pad);
+      ctx.lineTo(segX + segW - pad, segY + segH - pad);
+      ctx.lineTo(segX + segW - pad, segY + segH - pad - bracketLen);
+      ctx.stroke();
+      break;
+    }
+  }
+
+  ctx.restore();
+}
+
+/**
  * Main Canvas Render function
  * Clears canvas, renders base image, then renders all stamps in sequence.
  */
@@ -439,10 +769,13 @@ export function renderScene(
     }
   }
 
-  // --- Layer 1.2: Map Segment Photo Replacement (PoC) ---
+  // --- Layer 1.2: Map Segment Photo Replacement & Frame Preset (PoC) ---
   const activeMapSegment = mapSegment || options.mapSegment;
   if (activeMapSegment && activeMapSegment.mode === 'photo' && activeMapSegment.photoImage) {
     renderMapSegmentPhoto(ctx, activeMapSegment.photoImage, canvasWidth, canvasHeight);
+  }
+  if (activeMapSegment && activeMapSegment.framePreset && activeMapSegment.framePreset !== 'none') {
+    renderMapPanelFrame(ctx, activeMapSegment.framePreset, canvasWidth, canvasHeight);
   }
 
   // --- Layer 1.5: Atmosphere Mask Layer (Autumn Mask v1, Sunlight Mask v1) ---

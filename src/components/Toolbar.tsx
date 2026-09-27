@@ -9,8 +9,8 @@
  */
 
 import React, { useRef } from 'react';
-import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles, Sun, Focus, MapPin, Image, Camera } from 'lucide-react';
-import { LayoutMode, MapSegmentMode, MaskConfig, MaskIntensity, MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
+import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles, Sun, Focus, MapPin, Image, Camera, Square } from 'lucide-react';
+import { LayoutMode, MapFramePreset, MapSegmentMode, MaskConfig, MaskIntensity, MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
 import { MOTION_RECIPES, SCENE_MOTION_RECIPES } from '../engine/motion.ts';
 
 interface ToolbarProps {
@@ -20,6 +20,7 @@ interface ToolbarProps {
   maskConfig: MaskConfig;
   layoutMode: LayoutMode;
   mapMode: MapSegmentMode;
+  mapFramePreset: MapFramePreset;
   hasMapPhoto: boolean;
   hasBaseImage?: boolean;
   onOpenAvatarExtract?: () => void;
@@ -27,6 +28,7 @@ interface ToolbarProps {
   onUpdateMask: (maskConfig: MaskConfig) => void;
   onUpdateLayout: (layoutMode: LayoutMode) => void;
   onUpdateMapMode: (mapMode: MapSegmentMode) => void;
+  onUpdateMapFramePreset: (preset: MapFramePreset) => void;
   onSelectMapPhoto: (file: File) => void;
   onAddStamp: (type: StampType) => void;
   onAddForegroundSample: () => void;
@@ -54,6 +56,7 @@ export default function Toolbar({
   maskConfig,
   layoutMode,
   mapMode,
+  mapFramePreset,
   hasMapPhoto,
   hasBaseImage,
   onOpenAvatarExtract,
@@ -61,6 +64,7 @@ export default function Toolbar({
   onUpdateMask,
   onUpdateLayout,
   onUpdateMapMode,
+  onUpdateMapFramePreset,
   onSelectMapPhoto,
   onAddStamp,
   onAddForegroundSample,
@@ -339,6 +343,100 @@ export default function Toolbar({
             <span>写真変更</span>
           </button>
         )}
+      </div>
+
+      {/* Map Frame Preset Bar (None / Pink / Green / Yellow / White) */}
+      <div id="frame-controls-bar" className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-neutral-800/60">
+        <div className="flex items-center gap-1 text-[11px] font-semibold text-neutral-400 pl-0.5 flex-shrink-0">
+          <Square className="w-3.5 h-3.5 text-pink-400" />
+          <span>Frame:</span>
+        </div>
+
+        {/* None button */}
+        <button
+          id="btn-frame-none"
+          onClick={() => onUpdateMapFramePreset('none')}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1 flex-shrink-0 ${
+            mapFramePreset === 'none'
+              ? 'bg-neutral-700/80 text-white border-neutral-500 font-semibold shadow-sm'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <span>None</span>
+          {mapFramePreset === 'none' && <span className="w-1.5 h-1.5 rounded-full bg-neutral-300" />}
+        </button>
+
+        {/* Pink button */}
+        <button
+          id="btn-frame-pink"
+          onClick={() => {
+            onUpdateMapFramePreset('pink');
+            if (mapMode === 'original' && hasMapPhoto) onUpdateMapMode('photo');
+          }}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1.5 flex-shrink-0 ${
+            mapFramePreset === 'pink'
+              ? 'bg-pink-600/30 text-pink-200 border-pink-400/80 font-semibold shadow-sm shadow-pink-500/15'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-pink-400 shadow-sm border border-pink-300/60" />
+          <span>Pink</span>
+          {mapFramePreset === 'pink' && <span className="w-1.5 h-1.5 rounded-full bg-pink-400" />}
+        </button>
+
+        {/* Green button */}
+        <button
+          id="btn-frame-green"
+          onClick={() => {
+            onUpdateMapFramePreset('green');
+            if (mapMode === 'original' && hasMapPhoto) onUpdateMapMode('photo');
+          }}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1.5 flex-shrink-0 ${
+            mapFramePreset === 'green'
+              ? 'bg-emerald-600/30 text-emerald-200 border-emerald-400/80 font-semibold shadow-sm shadow-emerald-500/15'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm border border-emerald-300/60" />
+          <span>Green</span>
+          {mapFramePreset === 'green' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+        </button>
+
+        {/* Yellow button */}
+        <button
+          id="btn-frame-yellow"
+          onClick={() => {
+            onUpdateMapFramePreset('yellow');
+            if (mapMode === 'original' && hasMapPhoto) onUpdateMapMode('photo');
+          }}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1.5 flex-shrink-0 ${
+            mapFramePreset === 'yellow'
+              ? 'bg-amber-600/30 text-amber-200 border-amber-400/80 font-semibold shadow-sm shadow-amber-500/15'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-300 shadow-sm border border-amber-200/60" />
+          <span>Yellow</span>
+          {mapFramePreset === 'yellow' && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+        </button>
+
+        {/* White button */}
+        <button
+          id="btn-frame-white"
+          onClick={() => {
+            onUpdateMapFramePreset('white');
+            if (mapMode === 'original' && hasMapPhoto) onUpdateMapMode('photo');
+          }}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1.5 flex-shrink-0 ${
+            mapFramePreset === 'white'
+              ? 'bg-white/20 text-white border-white/80 font-semibold shadow-sm shadow-white/20'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-white shadow-sm border border-neutral-300" />
+          <span>White</span>
+          {mapFramePreset === 'white' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+        </button>
       </div>
 
       {/* If an item is selected, show item-specific properties */}

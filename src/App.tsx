@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { BaseImageState, DeveloperInfoData, LayoutMode, MapSegmentMode, MapSegmentState, MaskConfig, MotionId, SceneMotionId, StampItem, StampType } from './engine/types.ts';
+import { BaseImageState, DeveloperInfoData, LayoutMode, MapFramePreset, MapSegmentMode, MapSegmentState, MaskConfig, MotionId, SceneMotionId, StampItem, StampType } from './engine/types.ts';
 import { calculateExportDimensions, ExportQuality, QUALITY_PRESETS } from './engine/config.ts';
 import { createForegroundItem, loadPresetImage, SAMPLE_AVATAR_DATA_URL, SAMPLE_PRESETS, SamplePreset } from './engine/sampleImages.ts';
 import { detectDeviceBrowser, getCurrentViewportDimensions, initViewportHeightSync, processUserImage } from './engine/viewport.ts';
@@ -74,11 +74,12 @@ export default function App() {
   // Layout state (Minimal PoC: Original vs Character Focus)
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('original');
 
-  // Map Segment Replacement state (Minimal PoC: Original vs Photo Replacement)
+  // Map Segment Replacement state (Minimal PoC: Original vs Photo Replacement & Frame Preset)
   const [mapSegment, setMapSegment] = useState<MapSegmentState>({
     mode: 'original',
     photoUrl: null,
     photoImage: null,
+    framePreset: 'none',
   });
 
   // Stamps & Foreground Items collection (normalized coordinates)
@@ -430,11 +431,18 @@ export default function App() {
     }
   };
 
-  // Map Segment Photo Replace handlers (PoC)
+  // Map Segment Photo Replace & Frame Preset handlers (PoC)
   const handleUpdateMapMode = (mode: MapSegmentMode) => {
     setMapSegment((prev) => ({
       ...prev,
       mode,
+    }));
+  };
+
+  const handleUpdateMapFramePreset = (framePreset: MapFramePreset) => {
+    setMapSegment((prev) => ({
+      ...prev,
+      framePreset,
     }));
   };
 
@@ -448,11 +456,12 @@ export default function App() {
         const img = new Image();
         img.onerror = () => alert('画像デコードに失敗しました');
         img.onload = () => {
-          setMapSegment({
+          setMapSegment((prev) => ({
+            ...prev,
             mode: 'photo',
             photoUrl: dataUrl,
             photoImage: img,
-          });
+          }));
         };
         img.src = dataUrl;
       };
@@ -511,6 +520,7 @@ export default function App() {
           maskConfig={maskConfig}
           layoutMode={layoutMode}
           mapMode={mapSegment.mode}
+          mapFramePreset={mapSegment.framePreset}
           hasMapPhoto={!!mapSegment.photoImage}
           hasBaseImage={baseImage.isLoaded}
           onOpenAvatarExtract={() => setIsAvatarExtractOpen(true)}
@@ -525,6 +535,7 @@ export default function App() {
           onUpdateMask={setMaskConfig}
           onUpdateLayout={setLayoutMode}
           onUpdateMapMode={handleUpdateMapMode}
+          onUpdateMapFramePreset={handleUpdateMapFramePreset}
           onSelectMapPhoto={handleSelectMapPhoto}
           onAddStamp={handleAddStamp}
           onAddForegroundSample={handleAddForegroundSample}
