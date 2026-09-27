@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { BaseImageState, DeveloperInfoData, MaskConfig, MotionId, SceneMotionId, StampItem, StampType } from './engine/types.ts';
+import { BaseImageState, DeveloperInfoData, LayoutMode, MaskConfig, MotionId, SceneMotionId, StampItem, StampType } from './engine/types.ts';
 import { calculateExportDimensions, ExportQuality, QUALITY_PRESETS } from './engine/config.ts';
 import { createForegroundItem, loadPresetImage, SAMPLE_AVATAR_DATA_URL, SAMPLE_PRESETS, SamplePreset } from './engine/sampleImages.ts';
 import { detectDeviceBrowser, getCurrentViewportDimensions, initViewportHeightSync, processUserImage } from './engine/viewport.ts';
@@ -70,6 +70,9 @@ export default function App() {
     type: 'none',
     intensity: 'medium',
   });
+
+  // Layout state (Minimal PoC: Original vs Character Focus)
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('original');
 
   // Stamps & Foreground Items collection (normalized coordinates)
   const [stamps, setStamps] = useState<StampItem[]>(INITIAL_STAMPS);
@@ -364,7 +367,8 @@ export default function App() {
           setExportProgress(percent);
           setExportStatusText(text);
         },
-        maskConfig
+        maskConfig,
+        layoutMode
       );
 
       setExportResult(result);
@@ -387,7 +391,7 @@ export default function App() {
     } finally {
       setIsExporting(false);
     }
-  }, [baseImage, stamps, sceneMotionId, preferredExportMode, exportQuality, maskConfig]);
+  }, [baseImage, stamps, sceneMotionId, preferredExportMode, exportQuality, maskConfig, layoutMode]);
 
   // Handle "完成" (Finish)
   const handleFinishClick = () => {
@@ -448,6 +452,7 @@ export default function App() {
           sceneMotionId={sceneMotionId}
           sceneMotionTrigger={sceneMotionTrigger}
           maskConfig={maskConfig}
+          layoutMode={layoutMode}
           isFinishedMode={isFinishedMode}
           onSelectStamp={setSelectedStampId}
           onUpdateStamp={handleUpdateStamp}
@@ -463,6 +468,7 @@ export default function App() {
           selectedStamp={selectedStamp}
           sceneMotionId={sceneMotionId}
           maskConfig={maskConfig}
+          layoutMode={layoutMode}
           hasBaseImage={baseImage.isLoaded}
           onOpenAvatarExtract={() => setIsAvatarExtractOpen(true)}
           onUpdateSceneMotion={(id) => {
@@ -474,6 +480,7 @@ export default function App() {
             }));
           }}
           onUpdateMask={setMaskConfig}
+          onUpdateLayout={setLayoutMode}
           onAddStamp={handleAddStamp}
           onAddForegroundSample={handleAddForegroundSample}
           onAddForegroundFile={handleAddForegroundFile}

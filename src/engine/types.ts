@@ -18,6 +18,11 @@ export interface MaskConfig {
 }
 
 /**
+ * Layout Modes (Minimal PoC: Original vs Character Focus)
+ */
+export type LayoutMode = 'original' | 'character_focus';
+
+/**
  * Scene Motion IDs (Controls the entire artwork presentation, distinct from Item Motion)
  */
 export type SceneMotionId = 'none' | 'fade_in' | 'gentle_zoom' | 'fade_and_zoom' | 'dramatic_entrance' | 'slow_dramatic_zoom';

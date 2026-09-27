@@ -9,8 +9,8 @@
  */
 
 import React, { useRef } from 'react';
-import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles, Sun } from 'lucide-react';
-import { MaskConfig, MaskIntensity, MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
+import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles, Sun, Focus } from 'lucide-react';
+import { LayoutMode, MaskConfig, MaskIntensity, MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
 import { MOTION_RECIPES, SCENE_MOTION_RECIPES } from '../engine/motion.ts';
 
 interface ToolbarProps {
@@ -18,10 +18,12 @@ interface ToolbarProps {
   selectedStamp: StampItem | null;
   sceneMotionId: SceneMotionId;
   maskConfig: MaskConfig;
+  layoutMode: LayoutMode;
   hasBaseImage?: boolean;
   onOpenAvatarExtract?: () => void;
   onUpdateSceneMotion: (sceneMotionId: SceneMotionId) => void;
   onUpdateMask: (maskConfig: MaskConfig) => void;
+  onUpdateLayout: (layoutMode: LayoutMode) => void;
   onAddStamp: (type: StampType) => void;
   onAddForegroundSample: () => void;
   onAddForegroundFile: (file: File) => void;
@@ -46,10 +48,12 @@ export default function Toolbar({
   selectedStamp,
   sceneMotionId,
   maskConfig,
+  layoutMode,
   hasBaseImage,
   onOpenAvatarExtract,
   onUpdateSceneMotion,
   onUpdateMask,
+  onUpdateLayout,
   onAddStamp,
   onAddForegroundSample,
   onAddForegroundFile,
@@ -213,6 +217,42 @@ export default function Toolbar({
             })}
           </div>
         )}
+      </div>
+
+      {/* Layout Selection Bar (Minimal PoC: Original / Character Focus) */}
+      <div id="layout-controls-bar" className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-neutral-800/60">
+        <div className="flex items-center gap-1 text-[11px] font-semibold text-neutral-400 pl-0.5 flex-shrink-0">
+          <Focus className="w-3.5 h-3.5 text-sky-400" />
+          <span>Layout:</span>
+        </div>
+
+        {/* Original button */}
+        <button
+          id="btn-layout-original"
+          onClick={() => onUpdateLayout('original')}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1 flex-shrink-0 ${
+            layoutMode === 'original'
+              ? 'bg-neutral-700/80 text-white border-neutral-500 font-semibold shadow-sm'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <span>Original</span>
+          {layoutMode === 'original' && <span className="w-1.5 h-1.5 rounded-full bg-neutral-300" />}
+        </button>
+
+        {/* Character Focus button */}
+        <button
+          id="btn-layout-character-focus"
+          onClick={() => onUpdateLayout('character_focus')}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1 flex-shrink-0 ${
+            layoutMode === 'character_focus'
+              ? 'bg-sky-600/30 text-sky-200 border-sky-500/60 font-semibold shadow-sm shadow-sky-500/10'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <span>Character Focus</span>
+          {layoutMode === 'character_focus' && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
+        </button>
       </div>
 
       {/* If an item is selected, show item-specific properties */}

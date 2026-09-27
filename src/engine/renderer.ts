@@ -9,7 +9,7 @@
  * - Renders selection bounding indicator & transform hints
  */
 
-import { BaseImageState, MaskConfig, SceneMotionId, StampItem } from './types.ts';
+import { BaseImageState, LayoutMode, MaskConfig, SceneMotionId, StampItem } from './types.ts';
 import { getMotionRecipe, getSceneMotionRecipe } from './motion.ts';
 import { renderAutumnMask } from './masks/autumnMask.ts';
 import { renderSunlightMask } from './masks/sunlightMask.ts';
@@ -20,6 +20,7 @@ export interface RenderOptions {
   activeManipulatingId?: string | null;
   dpr?: number;
   maskConfig?: MaskConfig;
+  layoutMode?: LayoutMode;
 }
 
 /**
@@ -284,7 +285,8 @@ export function renderScene(
   totalDurationMs?: number,
   options: RenderOptions = {},
   sceneTimeMs?: number,
-  maskConfig?: MaskConfig
+  maskConfig?: MaskConfig,
+  layoutMode?: LayoutMode
 ): void {
   // Clear canvas
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -325,8 +327,32 @@ export function renderScene(
   ctx.translate(-originPxX, -originPxY);
 
   // --- Layer 1: BASE Image ---
+  const activeLayout = layoutMode || options.layoutMode || 'original';
   if (baseImage.image && baseImage.isLoaded) {
-    ctx.drawImage(baseImage.image, 0, 0, canvasWidth, canvasHeight);
+    if (activeLayout === 'character_focus') {
+      ctx.save();
+      // Clip to canvas frame so scaled content remains inside canvas
+      ctx.beginPath();
+      ctx.rect(0, 0, canvasWidth, canvasHeight);
+      ctx.clip();
+
+      // Fixed preset: scale 1.24x, focusing on character center (X: 0.56, Y: 0.52)
+      // and gently bringing them towards center-stage (X: 0.50, Y: 0.48)
+      const scale = 1.24;
+      const focusX = 0.56;
+      const focusY = 0.52;
+      const targetX = 0.50;
+      const targetY = 0.48;
+
+      ctx.translate(targetX * canvasWidth, targetY * canvasHeight);
+      ctx.scale(scale, scale);
+      ctx.translate(-focusX * canvasWidth, -focusY * canvasHeight);
+
+      ctx.drawImage(baseImage.image, 0, 0, canvasWidth, canvasHeight);
+      ctx.restore();
+    } else {
+      ctx.drawImage(baseImage.image, 0, 0, canvasWidth, canvasHeight);
+    }
   } else {
     // Default elegant backdrop if no image loaded yet
     const grad = ctx.createLinearGradient(0, 0, canvasWidth, canvasHeight);
