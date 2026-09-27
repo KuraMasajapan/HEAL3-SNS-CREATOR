@@ -23,6 +23,17 @@ export interface MaskConfig {
 export type LayoutMode = 'original' | 'character_focus';
 
 /**
+ * Map Segment Mode (Minimal PoC: Original vs User Photo Replacement)
+ */
+export type MapSegmentMode = 'original' | 'photo';
+
+export interface MapSegmentState {
+  mode: MapSegmentMode;
+  photoUrl: string | null;
+  photoImage: HTMLImageElement | null;
+}
+
+/**
  * Scene Motion IDs (Controls the entire artwork presentation, distinct from Item Motion)
  */
 export type SceneMotionId = 'none' | 'fade_in' | 'gentle_zoom' | 'fade_and_zoom' | 'dramatic_entrance' | 'slow_dramatic_zoom';

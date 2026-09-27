@@ -10,7 +10,7 @@
  * maintaining 60fps animation playback on the user's screen.
  */
 
-import { BaseImageState, ExportResult, LayoutMode, MaskConfig, SceneMotionId, StampItem } from './types.ts';
+import { BaseImageState, ExportResult, LayoutMode, MapSegmentState, MaskConfig, SceneMotionId, StampItem } from './types.ts';
 import { renderScene } from './renderer.ts';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
 import { calculateExportDimensions, ExportQuality, POC_CONFIG, QUALITY_PRESETS } from './config.ts';
@@ -108,7 +108,8 @@ export async function exportStillImage(
   quality: ExportQuality = 'current',
   onProgress?: ExportProgressCallback,
   maskConfig?: MaskConfig,
-  layoutMode?: LayoutMode
+  layoutMode?: LayoutMode,
+  mapSegment?: MapSegmentState
 ): Promise<ExportResult> {
   const startTime = performance.now();
   onProgress?.(20, '静止画をレンダリング中…');
@@ -131,7 +132,8 @@ export async function exportStillImage(
     selectedStampId: null,
     maskConfig,
     layoutMode,
-  }, undefined, maskConfig, layoutMode);
+    mapSegment,
+  }, undefined, maskConfig, layoutMode, mapSegment);
 
   onProgress?.(70, '画像ファイルをエンコード中…');
 
@@ -183,7 +185,8 @@ export async function exportAnimatedGif(
   quality: ExportQuality = 'current',
   onProgress?: ExportProgressCallback,
   maskConfig?: MaskConfig,
-  layoutMode?: LayoutMode
+  layoutMode?: LayoutMode,
+  mapSegment?: MapSegmentState
 ): Promise<ExportResult> {
   const startTime = performance.now();
   onProgress?.(10, isFallback ? 'GIFフォールバックの準備中…' : 'アニメーションGIFの準備中…');
@@ -225,13 +228,14 @@ export async function exportAnimatedGif(
 
   for (let f = 0; f < totalFrames; f++) {
     const timeMs = f * frameIntervalMs;
-    // Uses the EXACT SAME deterministic renderScene, Scene Motion, and Item Motion
+    // Uses the EXACT SAME deterministic renderScene, Scene Motion, Item Motion, Mask, Layout, and Map Segment
     renderScene(ctx, baseImage, stamps, width, height, timeMs, sceneMotionId, totalDurationMs, {
       isInteractivePreview: false,
       selectedStampId: null,
       maskConfig,
       layoutMode,
-    }, undefined, maskConfig, layoutMode);
+      mapSegment,
+    }, undefined, maskConfig, layoutMode, mapSegment);
 
     const imgData = ctx.getImageData(0, 0, width, height);
     // Quantize palette
@@ -292,7 +296,8 @@ export async function exportVideoMediaRecorder(
   quality: ExportQuality = 'current',
   onProgress?: ExportProgressCallback,
   maskConfig?: MaskConfig,
-  layoutMode?: LayoutMode
+  layoutMode?: LayoutMode,
+  mapSegment?: MapSegmentState
 ): Promise<ExportResult> {
   const startTime = performance.now();
   onProgress?.(10, '動画エンコーダーを初期化中…');
@@ -333,7 +338,8 @@ export async function exportVideoMediaRecorder(
       selectedStampId: null,
       maskConfig,
       layoutMode,
-    }, undefined, maskConfig, layoutMode);
+      mapSegment,
+    }, undefined, maskConfig, layoutMode, mapSegment);
 
     const fps = POC_CONFIG.VIDEO_EXPORT_FPS;
     const totalFrames = Math.round(fps * durationSec);
@@ -387,7 +393,8 @@ export async function exportVideoMediaRecorder(
         selectedStampId: null,
         maskConfig,
         layoutMode,
-      }, undefined, maskConfig, layoutMode);
+        mapSegment,
+      }, undefined, maskConfig, layoutMode, mapSegment);
 
       const percent = Math.round(15 + (f / totalFrames) * 75);
       onProgress?.(percent, `動画フレーム記録中 (${Math.round((f / totalFrames) * 100)}%)…`);
@@ -447,7 +454,8 @@ export async function exportArtwork(
   quality: ExportQuality = 'current',
   onProgress?: ExportProgressCallback,
   maskConfig?: MaskConfig,
-  layoutMode?: LayoutMode
+  layoutMode?: LayoutMode,
+  mapSegment?: MapSegmentState
 ): Promise<ExportResult> {
   const hasMotion =
     sceneMotionId !== 'none' ||
@@ -456,12 +464,12 @@ export async function exportArtwork(
 
   // Case 1: No motion -> Still image
   if (!hasMotion) {
-    return exportStillImage(baseImage, stamps, sceneMotionId, quality, onProgress, maskConfig, layoutMode);
+    return exportStillImage(baseImage, stamps, sceneMotionId, quality, onProgress, maskConfig, layoutMode, mapSegment);
   }
 
   // Case 2: Motion exists & user explicitly requested GIF
   if (mode === 'gif') {
-    return exportAnimatedGif(baseImage, stamps, sceneMotionId, false, undefined, quality, onProgress, maskConfig, layoutMode);
+    return exportAnimatedGif(baseImage, stamps, sceneMotionId, false, undefined, quality, onProgress, maskConfig, layoutMode, mapSegment);
   }
 
   const supportedMime = getSupportedVideoMimeType();
@@ -471,12 +479,12 @@ export async function exportArtwork(
   // If user requested video or auto, check if MediaRecorder is viable
   if (hasCaptureStream && supportedMime) {
     try {
-      return await exportVideoMediaRecorder(baseImage, stamps, supportedMime, sceneMotionId, quality, onProgress, maskConfig, layoutMode);
+      return await exportVideoMediaRecorder(baseImage, stamps, supportedMime, sceneMotionId, quality, onProgress, maskConfig, layoutMode, mapSegment);
     } catch (err: any) {
       const reason = `MediaRecorder失敗 [${supportedMime}]: ${err.message || String(err)}`;
       console.warn('MediaRecorder export failed, falling back to Animated GIF:', reason);
       onProgress?.(20, '動画記録に失敗したため、GIFフォールバックを実行します…');
-      return exportAnimatedGif(baseImage, stamps, sceneMotionId, true, reason, quality, onProgress, maskConfig, layoutMode);
+      return exportAnimatedGif(baseImage, stamps, sceneMotionId, true, reason, quality, onProgress, maskConfig, layoutMode, mapSegment);
     }
   }
 
@@ -485,5 +493,6 @@ export async function exportArtwork(
     ? 'ブラウザがcanvas.captureStreamをサポートしていません'
     : '利用可能な動画MIMEタイプ(MP4/WebM)が見つかりません';
   console.warn('Falling back to GIF:', reason);
-  return exportAnimatedGif(baseImage, stamps, sceneMotionId, true, reason, quality, onProgress, maskConfig, layoutMode);
+  return exportAnimatedGif(baseImage, stamps, sceneMotionId, true, reason, quality, onProgress, maskConfig, layoutMode, mapSegment);
 }
+

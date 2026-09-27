@@ -9,8 +9,8 @@
  */
 
 import React, { useRef } from 'react';
-import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles, Sun, Focus } from 'lucide-react';
-import { LayoutMode, MaskConfig, MaskIntensity, MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
+import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles, Sun, Focus, MapPin, Image, Camera } from 'lucide-react';
+import { LayoutMode, MapSegmentMode, MaskConfig, MaskIntensity, MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
 import { MOTION_RECIPES, SCENE_MOTION_RECIPES } from '../engine/motion.ts';
 
 interface ToolbarProps {
@@ -19,11 +19,15 @@ interface ToolbarProps {
   sceneMotionId: SceneMotionId;
   maskConfig: MaskConfig;
   layoutMode: LayoutMode;
+  mapMode: MapSegmentMode;
+  hasMapPhoto: boolean;
   hasBaseImage?: boolean;
   onOpenAvatarExtract?: () => void;
   onUpdateSceneMotion: (sceneMotionId: SceneMotionId) => void;
   onUpdateMask: (maskConfig: MaskConfig) => void;
   onUpdateLayout: (layoutMode: LayoutMode) => void;
+  onUpdateMapMode: (mapMode: MapSegmentMode) => void;
+  onSelectMapPhoto: (file: File) => void;
   onAddStamp: (type: StampType) => void;
   onAddForegroundSample: () => void;
   onAddForegroundFile: (file: File) => void;
@@ -49,11 +53,15 @@ export default function Toolbar({
   sceneMotionId,
   maskConfig,
   layoutMode,
+  mapMode,
+  hasMapPhoto,
   hasBaseImage,
   onOpenAvatarExtract,
   onUpdateSceneMotion,
   onUpdateMask,
   onUpdateLayout,
+  onUpdateMapMode,
+  onSelectMapPhoto,
   onAddStamp,
   onAddForegroundSample,
   onAddForegroundFile,
@@ -64,6 +72,7 @@ export default function Toolbar({
   onDeselect,
 }: ToolbarProps) {
   const fgFileInputRef = useRef<HTMLInputElement>(null);
+  const mapFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFgFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -73,6 +82,24 @@ export default function Toolbar({
     // reset input value so re-selecting same file triggers change
     if (e.target) {
       e.target.value = '';
+    }
+  };
+
+  const handleMapFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onSelectMapPhoto(file);
+    }
+    if (e.target) {
+      e.target.value = '';
+    }
+  };
+
+  const handlePhotoBtnClick = () => {
+    if (hasMapPhoto && mapMode === 'original') {
+      onUpdateMapMode('photo');
+    } else {
+      mapFileInputRef.current?.click();
     }
   };
 
@@ -253,6 +280,65 @@ export default function Toolbar({
           <span>Character Focus</span>
           {layoutMode === 'character_focus' && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
         </button>
+      </div>
+
+      {/* Map Segment Replacement Bar (PoC: Original / Photo) */}
+      <div id="map-controls-bar" className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-neutral-800/60">
+        <div className="flex items-center gap-1 text-[11px] font-semibold text-neutral-400 pl-0.5 flex-shrink-0">
+          <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Map:</span>
+        </div>
+
+        {/* Hidden file input for Photo replacement */}
+        <input
+          ref={mapFileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleMapFileChange}
+        />
+
+        {/* Original button */}
+        <button
+          id="btn-map-original"
+          onClick={() => onUpdateMapMode('original')}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1 flex-shrink-0 ${
+            mapMode === 'original'
+              ? 'bg-neutral-700/80 text-white border-neutral-500 font-semibold shadow-sm'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <span>Original</span>
+          {mapMode === 'original' && <span className="w-1.5 h-1.5 rounded-full bg-neutral-300" />}
+        </button>
+
+        {/* Photo button */}
+        <button
+          id="btn-map-photo"
+          onClick={handlePhotoBtnClick}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1 flex-shrink-0 ${
+            mapMode === 'photo'
+              ? 'bg-emerald-600/30 text-emerald-200 border-emerald-500/60 font-semibold shadow-sm shadow-emerald-500/10'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <Image className="w-3 h-3" />
+          <span>Photo</span>
+          {mapMode === 'photo' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+        </button>
+
+        {/* Quick Change button if Photo is selected and has photo loaded */}
+        {hasMapPhoto && (
+          <button
+            id="btn-map-photo-change"
+            onClick={() => mapFileInputRef.current?.click()}
+            title="写真を変更"
+            className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-neutral-700/70 bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition active:scale-95 flex items-center gap-1 flex-shrink-0"
+          >
+            <Camera className="w-3 h-3 text-emerald-400" />
+            <span>写真変更</span>
+          </button>
+        )}
       </div>
 
       {/* If an item is selected, show item-specific properties */}

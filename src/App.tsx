@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { BaseImageState, DeveloperInfoData, LayoutMode, MaskConfig, MotionId, SceneMotionId, StampItem, StampType } from './engine/types.ts';
+import { BaseImageState, DeveloperInfoData, LayoutMode, MapSegmentMode, MapSegmentState, MaskConfig, MotionId, SceneMotionId, StampItem, StampType } from './engine/types.ts';
 import { calculateExportDimensions, ExportQuality, QUALITY_PRESETS } from './engine/config.ts';
 import { createForegroundItem, loadPresetImage, SAMPLE_AVATAR_DATA_URL, SAMPLE_PRESETS, SamplePreset } from './engine/sampleImages.ts';
 import { detectDeviceBrowser, getCurrentViewportDimensions, initViewportHeightSync, processUserImage } from './engine/viewport.ts';
@@ -73,6 +73,13 @@ export default function App() {
 
   // Layout state (Minimal PoC: Original vs Character Focus)
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('original');
+
+  // Map Segment Replacement state (Minimal PoC: Original vs Photo Replacement)
+  const [mapSegment, setMapSegment] = useState<MapSegmentState>({
+    mode: 'original',
+    photoUrl: null,
+    photoImage: null,
+  });
 
   // Stamps & Foreground Items collection (normalized coordinates)
   const [stamps, setStamps] = useState<StampItem[]>(INITIAL_STAMPS);
@@ -368,7 +375,8 @@ export default function App() {
           setExportStatusText(text);
         },
         maskConfig,
-        layoutMode
+        layoutMode,
+        mapSegment
       );
 
       setExportResult(result);
@@ -391,7 +399,7 @@ export default function App() {
     } finally {
       setIsExporting(false);
     }
-  }, [baseImage, stamps, sceneMotionId, preferredExportMode, exportQuality, maskConfig, layoutMode]);
+  }, [baseImage, stamps, sceneMotionId, preferredExportMode, exportQuality, maskConfig, layoutMode, mapSegment]);
 
   // Handle "完成" (Finish)
   const handleFinishClick = () => {
@@ -419,6 +427,38 @@ export default function App() {
       refreshViewportMetrics();
     } catch (err: any) {
       console.error(err);
+    }
+  };
+
+  // Map Segment Photo Replace handlers (PoC)
+  const handleUpdateMapMode = (mode: MapSegmentMode) => {
+    setMapSegment((prev) => ({
+      ...prev,
+      mode,
+    }));
+  };
+
+  const handleSelectMapPhoto = (file: File) => {
+    try {
+      const reader = new FileReader();
+      reader.onerror = () => alert('画像の読み込みに失敗しました');
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        if (!dataUrl) return;
+        const img = new Image();
+        img.onerror = () => alert('画像デコードに失敗しました');
+        img.onload = () => {
+          setMapSegment({
+            mode: 'photo',
+            photoUrl: dataUrl,
+            photoImage: img,
+          });
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      alert(err.message || '写真の処理に失敗しました');
     }
   };
 
@@ -453,6 +493,7 @@ export default function App() {
           sceneMotionTrigger={sceneMotionTrigger}
           maskConfig={maskConfig}
           layoutMode={layoutMode}
+          mapSegment={mapSegment}
           isFinishedMode={isFinishedMode}
           onSelectStamp={setSelectedStampId}
           onUpdateStamp={handleUpdateStamp}
@@ -469,6 +510,8 @@ export default function App() {
           sceneMotionId={sceneMotionId}
           maskConfig={maskConfig}
           layoutMode={layoutMode}
+          mapMode={mapSegment.mode}
+          hasMapPhoto={!!mapSegment.photoImage}
           hasBaseImage={baseImage.isLoaded}
           onOpenAvatarExtract={() => setIsAvatarExtractOpen(true)}
           onUpdateSceneMotion={(id) => {
@@ -481,6 +524,8 @@ export default function App() {
           }}
           onUpdateMask={setMaskConfig}
           onUpdateLayout={setLayoutMode}
+          onUpdateMapMode={handleUpdateMapMode}
+          onSelectMapPhoto={handleSelectMapPhoto}
           onAddStamp={handleAddStamp}
           onAddForegroundSample={handleAddForegroundSample}
           onAddForegroundFile={handleAddForegroundFile}

@@ -9,7 +9,8 @@
  * - Renders selection bounding indicator & transform hints
  */
 
-import { BaseImageState, LayoutMode, MaskConfig, SceneMotionId, StampItem } from './types.ts';
+import { BaseImageState, LayoutMode, MapSegmentState, MaskConfig, SceneMotionId, StampItem } from './types.ts';
+import { HEAL3_MAP_SEGMENT_BOUNDS, MapSegmentBounds } from './config.ts';
 import { getMotionRecipe, getSceneMotionRecipe } from './motion.ts';
 import { renderAutumnMask } from './masks/autumnMask.ts';
 import { renderSunlightMask } from './masks/sunlightMask.ts';
@@ -21,6 +22,7 @@ export interface RenderOptions {
   dpr?: number;
   maskConfig?: MaskConfig;
   layoutMode?: LayoutMode;
+  mapSegment?: MapSegmentState;
 }
 
 /**
@@ -271,6 +273,63 @@ export function renderStamp(
 }
 
 /**
+ * Renders user photo cropped into the fixed HEAL3 Map Segment rectangle
+ * using aspect-fill / center crop (object-fit: cover).
+ */
+export function renderMapSegmentPhoto(
+  ctx: CanvasRenderingContext2D,
+  photoImage: HTMLImageElement,
+  canvasWidth: number,
+  canvasHeight: number,
+  bounds: MapSegmentBounds = HEAL3_MAP_SEGMENT_BOUNDS
+): void {
+  const segX = bounds.x * canvasWidth;
+  const segY = bounds.y * canvasHeight;
+  const segW = bounds.width * canvasWidth;
+  const segH = bounds.height * canvasHeight;
+  const segRadius = (bounds.borderRadius ?? 0) * canvasWidth;
+
+  const imgW = photoImage.naturalWidth || photoImage.width;
+  const imgH = photoImage.naturalHeight || photoImage.height;
+  if (imgW <= 0 || imgH <= 0 || segW <= 0 || segH <= 0) return;
+
+  ctx.save();
+
+  // Clip strictly to Map Segment bounds (with card border radius if specified)
+  ctx.beginPath();
+  if (segRadius > 0) {
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(segX, segY, segW, segH, segRadius);
+    } else {
+      ctx.moveTo(segX + segRadius, segY);
+      ctx.lineTo(segX + segW - segRadius, segY);
+      ctx.arcTo(segX + segW, segY, segX + segW, segY + segRadius, segRadius);
+      ctx.lineTo(segX + segW, segY + segH - segRadius);
+      ctx.arcTo(segX + segW, segY + segH, segX + segW - segRadius, segY + segH, segRadius);
+      ctx.lineTo(segX + segRadius, segY + segH);
+      ctx.arcTo(segX, segY + segH, segX, segY + segH - segRadius, segRadius);
+      ctx.lineTo(segX, segY + segRadius);
+      ctx.arcTo(segX, segY, segX + segRadius, segY, segRadius);
+      ctx.closePath();
+    }
+  } else {
+    ctx.rect(segX, segY, segW, segH);
+  }
+  ctx.clip();
+
+  // Aspect-fill (cover) & Center crop
+  const scale = Math.max(segW / imgW, segH / imgH);
+  const renderW = imgW * scale;
+  const renderH = imgH * scale;
+  const drawX = segX + (segW - renderW) / 2;
+  const drawY = segY + (segH - renderH) / 2;
+
+  ctx.drawImage(photoImage, drawX, drawY, renderW, renderH);
+
+  ctx.restore();
+}
+
+/**
  * Main Canvas Render function
  * Clears canvas, renders base image, then renders all stamps in sequence.
  */
@@ -286,7 +345,8 @@ export function renderScene(
   options: RenderOptions = {},
   sceneTimeMs?: number,
   maskConfig?: MaskConfig,
-  layoutMode?: LayoutMode
+  layoutMode?: LayoutMode,
+  mapSegment?: MapSegmentState
 ): void {
   // Clear canvas
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -377,6 +437,12 @@ export function renderScene(
       ctx.lineTo(canvasWidth, y);
       ctx.stroke();
     }
+  }
+
+  // --- Layer 1.2: Map Segment Photo Replacement (PoC) ---
+  const activeMapSegment = mapSegment || options.mapSegment;
+  if (activeMapSegment && activeMapSegment.mode === 'photo' && activeMapSegment.photoImage) {
+    renderMapSegmentPhoto(ctx, activeMapSegment.photoImage, canvasWidth, canvasHeight);
   }
 
   // --- Layer 1.5: Atmosphere Mask Layer (Autumn Mask v1, Sunlight Mask v1) ---

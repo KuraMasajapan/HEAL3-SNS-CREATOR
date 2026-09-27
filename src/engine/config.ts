@@ -101,3 +101,32 @@ export const POC_CONFIG = {
   GIF_EXPORT_FPS: 18,
   GIF_COLOR_QUANTIZE: 128, // 128 colors for optimal trade-off between quality & encode speed
 };
+
+/**
+ * HEAL3 Result Screen - Map Segment Coordinates (PoC)
+ * 
+ * Defines the fixed normalized bounding box [0.0 - 1.0] of the left-hand GPS Map card
+ * on the HEAL3 official result screen.
+ * Tuning parameters are centralized here for quick adjustment without touching rendering logic.
+ */
+export interface MapSegmentBounds {
+  /** Left margin in normalized coordinates (0.0 = left edge, 1.0 = right edge) */
+  x: number;
+  /** Top margin in normalized coordinates (0.0 = top edge, 1.0 = bottom edge) */
+  y: number;
+  /** Width in normalized coordinates relative to canvas width */
+  width: number;
+  /** Height in normalized coordinates relative to canvas height */
+  height: number;
+  /** Corner radius in normalized coordinates relative to canvas width (0 for sharp rectangle) */
+  borderRadius: number;
+}
+
+export const HEAL3_MAP_SEGMENT_BOUNDS: MapSegmentBounds = {
+  x: 0.028,        // Left margin: ~2.8% of canvas width (~20px @ 720w)
+  y: 0.0625,       // Top margin: ~6.25% of canvas height (~80px @ 1280h)
+  width: 0.431,    // Width: ~43.1% of canvas width (~310px @ 720w, covers map card)
+  height: 0.750,   // Height: ~75.0% of canvas height (~960px @ 1280h)
+  borderRadius: 0.033, // Card corner rounding: ~3.3% of canvas width (~24px @ 720w)
+};
+

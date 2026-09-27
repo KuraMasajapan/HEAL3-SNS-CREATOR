@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { BaseImageState, LayoutMode, MaskConfig, SceneMotionId, StampItem } from '../engine/types.ts';
+import { BaseImageState, LayoutMode, MapSegmentState, MaskConfig, SceneMotionId, StampItem } from '../engine/types.ts';
 import { renderScene } from '../engine/renderer.ts';
 import { createInitialGestureState, GestureState, hitTestRotateHandle, hitTestStamp } from '../engine/gestures.ts';
 import { POC_CONFIG } from '../engine/config.ts';
@@ -19,6 +19,7 @@ interface CanvasStageProps {
   sceneMotionTrigger?: number;
   maskConfig?: MaskConfig;
   layoutMode?: LayoutMode;
+  mapSegment?: MapSegmentState;
   isFinishedMode: boolean;
   onSelectStamp: (id: string | null) => void;
   onUpdateStamp: (stamp: StampItem) => void;
@@ -34,6 +35,7 @@ export default function CanvasStage({
   sceneMotionTrigger,
   maskConfig,
   layoutMode = 'original',
+  mapSegment,
   isFinishedMode,
   onSelectStamp,
   onUpdateStamp,
@@ -56,6 +58,9 @@ export default function CanvasStage({
 
   const layoutModeRef = useRef<LayoutMode>(layoutMode);
   layoutModeRef.current = layoutMode;
+
+  const mapSegmentRef = useRef<MapSegmentState | undefined>(mapSegment);
+  mapSegmentRef.current = mapSegment;
 
   const sceneMotionIdRef = useRef<SceneMotionId>(sceneMotionId);
   sceneMotionIdRef.current = sceneMotionId;
@@ -166,10 +171,12 @@ export default function CanvasStage({
               dpr: displayMetrics.dpr,
               maskConfig: maskConfigRef.current,
               layoutMode: layoutModeRef.current,
+              mapSegment: mapSegmentRef.current,
             },
             sceneElapsedMs,
             maskConfigRef.current,
-            layoutModeRef.current
+            layoutModeRef.current,
+            mapSegmentRef.current
           );
         }
       }
