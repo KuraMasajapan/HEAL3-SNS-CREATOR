@@ -123,10 +123,10 @@ export interface MapSegmentBounds {
 }
 
 export const HEAL3_MAP_SEGMENT_BOUNDS: MapSegmentBounds = {
-  x: 0.042,        // Left margin: ~4.2% of base image width (standard iOS card margin ~16-17px @ 393w)
-  y: 0.150,        // Top margin: ~15.0% of base image height (clears status bar & Activity header)
-  width: 0.430,    // Width: ~43.0% of base image width (covers map card, ending at ~47.2% before avatar)
-  height: 0.405,   // Height: ~40.5% of base image height (covers map card, ending at ~55.5% above stats)
-  borderRadius: 0.038, // Card corner rounding: ~3.8% of base image width (~15-16px iOS card corner radius)
+  x: 0.042,        // Left margin: ~4.2% of base image width
+  y: 0.148,        // Top margin: ~14.8% of base image height (aligns with map card top)
+  width: 0.435,    // Width: ~43.5% of base image width (right edge at ~47.7%, before avatar)
+  height: 0.620,   // Height: ~62.0% of base image height (bottom edge at ~76.8%, covers START and map base)
+  borderRadius: 0.038, // Card corner rounding: ~3.8% of base image width
 };
 

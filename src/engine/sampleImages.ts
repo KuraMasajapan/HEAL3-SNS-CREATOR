@@ -78,13 +78,13 @@ function createHeal3ScreenMockDataUrl(
       <!-- HEAL3 Sky Background -->
       <rect width="${width}" height="${height}" fill="url(#skyBg)" />
 
-      <!-- Left Map Section Simulation (matches HEAL3_MAP_SEGMENT_BOUNDS: x~0.042, y~0.150, w~0.430, h~0.405) -->
-      <rect x="30" y="192" width="310" height="518" rx="27" fill="#0f172a" fill-opacity="0.85" stroke="#38bdf8" stroke-opacity="0.3" stroke-width="2" />
+      <!-- Left Map Section Simulation (matches HEAL3_MAP_SEGMENT_BOUNDS: x~0.042, y~0.148, w~0.435, h~0.620) -->
+      <rect x="30" y="189" width="313" height="794" rx="27" fill="#0f172a" fill-opacity="0.85" stroke="#38bdf8" stroke-opacity="0.3" stroke-width="2" />
       <text x="50" y="240" fill="#38bdf8" font-family="system-ui, sans-serif" font-weight="700" font-size="20">GPS ROUTE</text>
-      <path d="M 60 620 Q 120 480, 160 380 T 260 280" fill="none" stroke="#22c55e" stroke-width="8" stroke-linecap="round" />
-      <circle cx="260" cy="280" r="14" fill="#22c55e" stroke="#ffffff" stroke-width="3" />
-      <circle cx="60" cy="620" r="10" fill="#3b82f6" stroke="#ffffff" stroke-width="2" />
-      <text x="50" y="675" fill="#94a3b8" font-family="monospace" font-size="16">DIST: 5.42 km</text>
+      <path d="M 60 880 Q 120 680, 160 500 T 260 300" fill="none" stroke="#22c55e" stroke-width="8" stroke-linecap="round" />
+      <circle cx="260" cy="300" r="14" fill="#22c55e" stroke="#ffffff" stroke-width="3" />
+      <circle cx="60" cy="880" r="10" fill="#3b82f6" stroke="#ffffff" stroke-width="2" />
+      <text x="50" y="945" fill="#94a3b8" font-family="monospace" font-size="16">START - 5.42 km</text>
 
       <!-- Right 3D Character Section Simulation -->
       <!-- Avatar Ground Shadow -->
