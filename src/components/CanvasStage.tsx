@@ -10,6 +10,7 @@ import { BaseImageState, LayoutMode, MapSegmentState, MaskConfig, SceneMotionId,
 import { renderScene } from '../engine/renderer.ts';
 import { createInitialGestureState, GestureState, hitTestRotateHandle, hitTestStamp } from '../engine/gestures.ts';
 import { POC_CONFIG } from '../engine/config.ts';
+import { MapPanelDetectionResult, renderDetectorDebugOverlay } from '../engine/mapPanelDetector.ts';
 
 interface CanvasStageProps {
   baseImage: BaseImageState;
@@ -20,6 +21,8 @@ interface CanvasStageProps {
   maskConfig?: MaskConfig;
   layoutMode?: LayoutMode;
   mapSegment?: MapSegmentState;
+  mapDetection?: MapPanelDetectionResult | null;
+  showDetectorOverlay?: boolean;
   isFinishedMode: boolean;
   onSelectStamp: (id: string | null) => void;
   onUpdateStamp: (stamp: StampItem) => void;
@@ -36,6 +39,8 @@ export default function CanvasStage({
   maskConfig,
   layoutMode = 'original',
   mapSegment,
+  mapDetection,
+  showDetectorOverlay = true,
   isFinishedMode,
   onSelectStamp,
   onUpdateStamp,
@@ -61,6 +66,12 @@ export default function CanvasStage({
 
   const mapSegmentRef = useRef<MapSegmentState | undefined>(mapSegment);
   mapSegmentRef.current = mapSegment;
+
+  const mapDetectionRef = useRef<MapPanelDetectionResult | null | undefined>(mapDetection);
+  mapDetectionRef.current = mapDetection;
+
+  const showDetectorOverlayRef = useRef<boolean>(showDetectorOverlay);
+  showDetectorOverlayRef.current = showDetectorOverlay;
 
   const sceneMotionIdRef = useRef<SceneMotionId>(sceneMotionId);
   sceneMotionIdRef.current = sceneMotionId;
@@ -178,6 +189,11 @@ export default function CanvasStage({
             layoutModeRef.current,
             mapSegmentRef.current
           );
+
+          // Map Panel Detector PoC Debug Bounding Box Overlay (Preview Only)
+          if (!isFinishedModeRef.current && mapDetectionRef.current && showDetectorOverlayRef.current) {
+            renderDetectorDebugOverlay(ctx, mapDetectionRef.current, bufferW, bufferH);
+          }
         }
       }
 

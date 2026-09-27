@@ -18,6 +18,7 @@ import FinishView from './components/FinishView.tsx';
 import DeveloperInfoModal from './components/DeveloperInfoModal.tsx';
 import { AvatarExtractModal } from './components/AvatarExtractModal.tsx';
 import { AvatarExtractionResult } from './engine/types.ts';
+import { detectMapPanel, MapPanelDetectionResult } from './engine/mapPanelDetector.ts';
 
 // Initial sample stamps for instant live demonstration
 const INITIAL_STAMPS: StampItem[] = [
@@ -81,6 +82,10 @@ export default function App() {
     photoImage: null,
     framePreset: 'none',
   });
+
+  // Map Panel Detector PoC state (Zero-base image-content analysis)
+  const [mapDetection, setMapDetection] = useState<MapPanelDetectionResult | null>(null);
+  const [showDetectorOverlay, setShowDetectorOverlay] = useState<boolean>(true);
 
   // Stamps & Foreground Items collection (normalized coordinates)
   const [stamps, setStamps] = useState<StampItem[]>(INITIAL_STAMPS);
@@ -177,6 +182,21 @@ export default function App() {
       cleanupViewportSync();
     };
   }, []);
+
+  // Run Map Panel Detector PoC on BASE image whenever image is loaded or updated
+  useEffect(() => {
+    if (baseImage.image && baseImage.isLoaded) {
+      try {
+        const result = detectMapPanel(baseImage.image);
+        setMapDetection(result);
+      } catch (err) {
+        console.error('[MapPanelDetector Error]:', err);
+        setMapDetection(null);
+      }
+    } else {
+      setMapDetection(null);
+    }
+  }, [baseImage.image, baseImage.isLoaded]);
 
   // Update dev metrics
   const handleFpsUpdate = useCallback((fps: number) => {
@@ -503,6 +523,8 @@ export default function App() {
           maskConfig={maskConfig}
           layoutMode={layoutMode}
           mapSegment={mapSegment}
+          mapDetection={mapDetection}
+          showDetectorOverlay={showDetectorOverlay}
           isFinishedMode={isFinishedMode}
           onSelectStamp={setSelectedStampId}
           onUpdateStamp={handleUpdateStamp}
@@ -523,6 +545,9 @@ export default function App() {
           mapFramePreset={mapSegment.framePreset}
           hasMapPhoto={!!mapSegment.photoImage}
           hasBaseImage={baseImage.isLoaded}
+          mapDetection={mapDetection}
+          showDetectorOverlay={showDetectorOverlay}
+          onToggleDetectorOverlay={() => setShowDetectorOverlay((prev) => !prev)}
           onOpenAvatarExtract={() => setIsAvatarExtractOpen(true)}
           onUpdateSceneMotion={(id) => {
             setSceneMotionId(id);

@@ -9,9 +9,10 @@
  */
 
 import React, { useRef } from 'react';
-import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles, Sun, Focus, MapPin, Image, Camera, Square } from 'lucide-react';
+import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles, Sun, Focus, MapPin, Image, Camera, Square, Scan } from 'lucide-react';
 import { LayoutMode, MapFramePreset, MapSegmentMode, MaskConfig, MaskIntensity, MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
 import { MOTION_RECIPES, SCENE_MOTION_RECIPES } from '../engine/motion.ts';
+import { MapPanelDetectionResult } from '../engine/mapPanelDetector.ts';
 
 interface ToolbarProps {
   stamps: StampItem[];
@@ -23,6 +24,9 @@ interface ToolbarProps {
   mapFramePreset: MapFramePreset;
   hasMapPhoto: boolean;
   hasBaseImage?: boolean;
+  mapDetection?: MapPanelDetectionResult | null;
+  showDetectorOverlay?: boolean;
+  onToggleDetectorOverlay?: () => void;
   onOpenAvatarExtract?: () => void;
   onUpdateSceneMotion: (sceneMotionId: SceneMotionId) => void;
   onUpdateMask: (maskConfig: MaskConfig) => void;
@@ -59,6 +63,9 @@ export default function Toolbar({
   mapFramePreset,
   hasMapPhoto,
   hasBaseImage,
+  mapDetection,
+  showDetectorOverlay = true,
+  onToggleDetectorOverlay,
   onOpenAvatarExtract,
   onUpdateSceneMotion,
   onUpdateMask,
@@ -341,6 +348,24 @@ export default function Toolbar({
           >
             <Camera className="w-3 h-3 text-emerald-400" />
             <span>写真変更</span>
+          </button>
+        )}
+
+        {/* Map Panel Detector PoC toggle button */}
+        {mapDetection && (
+          <button
+            id="btn-toggle-detector-overlay"
+            onClick={onToggleDetectorOverlay}
+            title="Map Panel Detector PoC 検出枠の表示/非表示を切り替え"
+            className={`text-[10px] font-medium px-2 py-0.5 rounded-md border transition active:scale-95 flex items-center gap-1 flex-shrink-0 ml-auto ${
+              showDetectorOverlay
+                ? 'bg-cyan-950/60 border-cyan-500/70 text-cyan-300 shadow-sm shadow-cyan-500/10'
+                : 'bg-neutral-800/80 border-neutral-700 text-neutral-400 hover:text-neutral-200'
+            }`}
+          >
+            <Scan className="w-3 h-3 text-cyan-400" />
+            <span>検出枠: {showDetectorOverlay ? 'ON' : 'OFF'}</span>
+            <span className="font-mono text-[9px] text-cyan-400/80">({Math.round(mapDetection.confidence * 100)}%)</span>
           </button>
         )}
       </div>
