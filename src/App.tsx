@@ -397,7 +397,8 @@ export default function App() {
         },
         maskConfig,
         layoutMode,
-        mapSegment
+        mapSegment,
+        mapDetection
       );
 
       setExportResult(result);
@@ -420,7 +421,7 @@ export default function App() {
     } finally {
       setIsExporting(false);
     }
-  }, [baseImage, stamps, sceneMotionId, preferredExportMode, exportQuality, maskConfig, layoutMode, mapSegment]);
+  }, [baseImage, stamps, sceneMotionId, preferredExportMode, exportQuality, maskConfig, layoutMode, mapSegment, mapDetection]);
 
   // Handle "完成" (Finish)
   const handleFinishClick = () => {
@@ -600,6 +601,7 @@ export default function App() {
         preferredMode={preferredExportMode}
         onSelectPreferredMode={setPreferredExportMode}
         exportQuality={exportQuality}
+        mapDetection={mapDetection}
         onSelectExportQuality={(q) => {
           setExportQuality(q);
           const newPlanned = calculateExportDimensions(

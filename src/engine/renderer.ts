@@ -14,6 +14,7 @@ import { HEAL3_MAP_SEGMENT_BOUNDS, MapSegmentBounds } from './config.ts';
 import { getMotionRecipe, getSceneMotionRecipe } from './motion.ts';
 import { renderAutumnMask } from './masks/autumnMask.ts';
 import { renderSunlightMask } from './masks/sunlightMask.ts';
+import { MapPanelDetectionResult } from './mapPanelDetector.ts';
 
 export interface RenderOptions {
   isInteractivePreview?: boolean;
@@ -23,6 +24,7 @@ export interface RenderOptions {
   maskConfig?: MaskConfig;
   layoutMode?: LayoutMode;
   mapSegment?: MapSegmentState;
+  mapDetection?: MapPanelDetectionResult | null;
 }
 
 /**
@@ -771,11 +773,23 @@ export function renderScene(
 
   // --- Layer 1.2: Map Segment Photo Replacement & Frame Preset (PoC) ---
   const activeMapSegment = mapSegment || options.mapSegment;
+  const activeDetection = options.mapDetection;
+  const effectiveBounds: MapSegmentBounds =
+    activeDetection && activeDetection.status !== 'failed' && activeDetection.width > 0.1 && activeDetection.height > 0.1
+      ? {
+          x: activeDetection.x,
+          y: activeDetection.y,
+          width: activeDetection.width,
+          height: activeDetection.height,
+          borderRadius: 0.038,
+        }
+      : HEAL3_MAP_SEGMENT_BOUNDS;
+
   if (activeMapSegment && activeMapSegment.mode === 'photo' && activeMapSegment.photoImage) {
-    renderMapSegmentPhoto(ctx, activeMapSegment.photoImage, canvasWidth, canvasHeight);
+    renderMapSegmentPhoto(ctx, activeMapSegment.photoImage, canvasWidth, canvasHeight, effectiveBounds);
   }
   if (activeMapSegment && activeMapSegment.framePreset && activeMapSegment.framePreset !== 'none') {
-    renderMapPanelFrame(ctx, activeMapSegment.framePreset, canvasWidth, canvasHeight);
+    renderMapPanelFrame(ctx, activeMapSegment.framePreset, canvasWidth, canvasHeight, effectiveBounds);
   }
 
   // --- Layer 1.5: Atmosphere Mask Layer (Autumn Mask v1, Sunlight Mask v1) ---

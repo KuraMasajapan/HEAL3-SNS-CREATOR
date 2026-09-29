@@ -125,8 +125,21 @@ export function detectMapPanel(
     };
   }
 
-  ctx.drawImage(sourceImage, 0, 0, targetW, targetH);
-  const imgData = ctx.getImageData(0, 0, targetW, targetH);
+  let imgData: ImageData;
+  try {
+    ctx.drawImage(sourceImage, 0, 0, targetW, targetH);
+    imgData = ctx.getImageData(0, 0, targetW, targetH);
+  } catch (_err) {
+    return {
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      confidence: 0,
+      elapsedMs: Math.round(performance.now() - startTime),
+      status: 'failed',
+    };
+  }
   const data = imgData.data;
 
   // 2. Precompute raw Luminance array L(x, y)
@@ -486,7 +499,7 @@ export function detectMapPanel(
 
   const edgeScore = Math.min(1.0, avgBorderGrad / 28);
   const contrastScore = Math.min(1.0, contrastDelta / 50);
-  const fillRatio = bestRegion ? bestRegion.fillRatio : 0.6;
+  const fillRatio = bestRegion ? bestRegion.fillRatio : 0.0;
 
   let confidence = Math.max(
     0.0,
@@ -499,7 +512,9 @@ export function detectMapPanel(
     )
   );
 
-  if (contrastDelta < 15 && edgeScore < 0.2) {
+  if (!bestRegion) {
+    confidence = Math.min(confidence, 0.15);
+  } else if (contrastDelta < 15 && edgeScore < 0.2) {
     confidence *= 0.4;
   }
 

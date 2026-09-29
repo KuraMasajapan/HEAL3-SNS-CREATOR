@@ -5,10 +5,11 @@
  * and export technical diagnostics required by the PoC specification.
  */
 
-import { X, RefreshCw, Smartphone, Gauge, Film, CheckCircle, Cpu, AlertTriangle, Sliders, Check, Scissors } from 'lucide-react';
+import { X, RefreshCw, Smartphone, Gauge, Film, CheckCircle, Cpu, AlertTriangle, Sliders, Check, Scissors, Scan, MapPin } from 'lucide-react';
 import { DeveloperInfoData } from '../engine/types.ts';
 import { PreferredExportMode } from '../engine/exporter.ts';
 import { calculateExportDimensions, ExportQuality, QUALITY_PRESETS } from '../engine/config.ts';
+import { MapPanelDetectionResult } from '../engine/mapPanelDetector.ts';
 
 interface DeveloperInfoModalProps {
   isOpen: boolean;
@@ -19,6 +20,7 @@ interface DeveloperInfoModalProps {
   exportQuality: ExportQuality;
   onSelectExportQuality: (quality: ExportQuality) => void;
   onRefreshMetrics: () => void;
+  mapDetection?: MapPanelDetectionResult | null;
 }
 
 export default function DeveloperInfoModal({
@@ -30,6 +32,7 @@ export default function DeveloperInfoModal({
   exportQuality,
   onSelectExportQuality,
   onRefreshMetrics,
+  mapDetection,
 }: DeveloperInfoModalProps) {
   if (!isOpen) return null;
 
@@ -244,6 +247,85 @@ export default function DeveloperInfoModal({
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Map Panel Detector Telemetry (Zero-Base Analysis PoC) */}
+          <div className="bg-neutral-950/70 border border-cyan-800/50 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between text-cyan-400 font-semibold text-[11px] uppercase tracking-wider font-sans">
+              <div className="flex items-center gap-1.5">
+                <Scan className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Map Panel Detector (Zero-Base Pure TS)</span>
+              </div>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                mapDetection?.status === 'detected'
+                  ? 'bg-cyan-950 text-cyan-300 border border-cyan-700/60'
+                  : mapDetection?.status === 'low_confidence'
+                  ? 'bg-amber-950 text-amber-300 border border-amber-700/60'
+                  : 'bg-rose-950 text-rose-300 border border-rose-700/60'
+              }`}>
+                {mapDetection
+                  ? mapDetection.status === 'detected'
+                    ? '検出成功'
+                    : mapDetection.status === 'low_confidence'
+                    ? '低信頼度'
+                    : '未検出 / 非HEAL3'
+                  : '未実行'}
+              </span>
+            </div>
+            {mapDetection ? (
+              <div className="grid grid-cols-2 gap-2 text-neutral-300">
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">Confidence (信頼度)</span>
+                  <span className={`font-semibold font-mono ${
+                    mapDetection.confidence >= 0.6 ? 'text-cyan-300' : mapDetection.confidence >= 0.35 ? 'text-amber-300' : 'text-rose-400'
+                  }`}>
+                    {Math.round(mapDetection.confidence * 100)}%
+                  </span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">Latency (処理時間)</span>
+                  <span className="font-semibold text-neutral-200 font-mono">
+                    {mapDetection.elapsedMs} ms
+                  </span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-neutral-500 block text-[10px]">Detected Bounding Box (正規化座標)</span>
+                  <span className="font-semibold text-cyan-200 font-mono text-[11px] block bg-neutral-900/80 px-2 py-1 rounded border border-neutral-800">
+                    X: {mapDetection.x.toFixed(3)}, Y: {mapDetection.y.toFixed(3)}, W: {mapDetection.width.toFixed(3)}, H: {mapDetection.height.toFixed(3)}
+                  </span>
+                </div>
+                {mapDetection.metrics && (
+                  <>
+                    <div>
+                      <span className="text-neutral-500 block text-[10px]">Contrast Delta (ΔL)</span>
+                      <span className="font-semibold text-neutral-200 font-mono">
+                        {mapDetection.metrics.contrastDelta.toFixed(1)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500 block text-[10px]">Fill Solidity (充填率)</span>
+                      <span className="font-semibold text-neutral-200 font-mono">
+                        {mapDetection.metrics.fillRatio}%
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500 block text-[10px]">Edge Score (外周輪郭)</span>
+                      <span className="font-semibold text-neutral-200 font-mono">
+                        {Math.round(mapDetection.metrics.edgeScore * 100)}%
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500 block text-[10px]">Adaptive Replacement</span>
+                      <span className="font-semibold text-emerald-400 font-sans text-[11px]">
+                        連動同期中
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <p className="text-[10px] text-neutral-500">BASE画像の解析結果はありません</p>
+            )}
           </div>
 
           {/* Avatar Extraction Telemetry (PoC) */}

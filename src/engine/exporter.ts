@@ -14,6 +14,7 @@ import { BaseImageState, ExportResult, LayoutMode, MapSegmentState, MaskConfig, 
 import { renderScene } from './renderer.ts';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
 import { calculateExportDimensions, ExportQuality, POC_CONFIG, QUALITY_PRESETS } from './config.ts';
+import { MapPanelDetectionResult } from './mapPanelDetector.ts';
 
 export type ExportProgressCallback = (percent: number, statusText: string) => void;
 
@@ -109,7 +110,8 @@ export async function exportStillImage(
   onProgress?: ExportProgressCallback,
   maskConfig?: MaskConfig,
   layoutMode?: LayoutMode,
-  mapSegment?: MapSegmentState
+  mapSegment?: MapSegmentState,
+  mapDetection?: MapPanelDetectionResult | null
 ): Promise<ExportResult> {
   const startTime = performance.now();
   onProgress?.(20, '静止画をレンダリング中…');
@@ -133,6 +135,7 @@ export async function exportStillImage(
     maskConfig,
     layoutMode,
     mapSegment,
+    mapDetection,
   }, undefined, maskConfig, layoutMode, mapSegment);
 
   onProgress?.(70, '画像ファイルをエンコード中…');
@@ -186,7 +189,8 @@ export async function exportAnimatedGif(
   onProgress?: ExportProgressCallback,
   maskConfig?: MaskConfig,
   layoutMode?: LayoutMode,
-  mapSegment?: MapSegmentState
+  mapSegment?: MapSegmentState,
+  mapDetection?: MapPanelDetectionResult | null
 ): Promise<ExportResult> {
   const startTime = performance.now();
   onProgress?.(10, isFallback ? 'GIFフォールバックの準備中…' : 'アニメーションGIFの準備中…');
@@ -235,6 +239,7 @@ export async function exportAnimatedGif(
       maskConfig,
       layoutMode,
       mapSegment,
+      mapDetection,
     }, undefined, maskConfig, layoutMode, mapSegment);
 
     const imgData = ctx.getImageData(0, 0, width, height);
@@ -297,7 +302,8 @@ export async function exportVideoMediaRecorder(
   onProgress?: ExportProgressCallback,
   maskConfig?: MaskConfig,
   layoutMode?: LayoutMode,
-  mapSegment?: MapSegmentState
+  mapSegment?: MapSegmentState,
+  mapDetection?: MapPanelDetectionResult | null
 ): Promise<ExportResult> {
   const startTime = performance.now();
   onProgress?.(10, '動画エンコーダーを初期化中…');
@@ -394,6 +400,7 @@ export async function exportVideoMediaRecorder(
         maskConfig,
         layoutMode,
         mapSegment,
+        mapDetection,
       }, undefined, maskConfig, layoutMode, mapSegment);
 
       const percent = Math.round(15 + (f / totalFrames) * 75);
@@ -455,7 +462,8 @@ export async function exportArtwork(
   onProgress?: ExportProgressCallback,
   maskConfig?: MaskConfig,
   layoutMode?: LayoutMode,
-  mapSegment?: MapSegmentState
+  mapSegment?: MapSegmentState,
+  mapDetection?: MapPanelDetectionResult | null
 ): Promise<ExportResult> {
   const hasMotion =
     sceneMotionId !== 'none' ||
@@ -464,12 +472,12 @@ export async function exportArtwork(
 
   // Case 1: No motion -> Still image
   if (!hasMotion) {
-    return exportStillImage(baseImage, stamps, sceneMotionId, quality, onProgress, maskConfig, layoutMode, mapSegment);
+    return exportStillImage(baseImage, stamps, sceneMotionId, quality, onProgress, maskConfig, layoutMode, mapSegment, mapDetection);
   }
 
   // Case 2: Motion exists & user explicitly requested GIF
   if (mode === 'gif') {
-    return exportAnimatedGif(baseImage, stamps, sceneMotionId, false, undefined, quality, onProgress, maskConfig, layoutMode, mapSegment);
+    return exportAnimatedGif(baseImage, stamps, sceneMotionId, false, undefined, quality, onProgress, maskConfig, layoutMode, mapSegment, mapDetection);
   }
 
   const supportedMime = getSupportedVideoMimeType();
@@ -479,12 +487,12 @@ export async function exportArtwork(
   // If user requested video or auto, check if MediaRecorder is viable
   if (hasCaptureStream && supportedMime) {
     try {
-      return await exportVideoMediaRecorder(baseImage, stamps, supportedMime, sceneMotionId, quality, onProgress, maskConfig, layoutMode, mapSegment);
+      return await exportVideoMediaRecorder(baseImage, stamps, supportedMime, sceneMotionId, quality, onProgress, maskConfig, layoutMode, mapSegment, mapDetection);
     } catch (err: any) {
       const reason = `MediaRecorder失敗 [${supportedMime}]: ${err.message || String(err)}`;
       console.warn('MediaRecorder export failed, falling back to Animated GIF:', reason);
       onProgress?.(20, '動画記録に失敗したため、GIFフォールバックを実行します…');
-      return exportAnimatedGif(baseImage, stamps, sceneMotionId, true, reason, quality, onProgress, maskConfig, layoutMode, mapSegment);
+      return exportAnimatedGif(baseImage, stamps, sceneMotionId, true, reason, quality, onProgress, maskConfig, layoutMode, mapSegment, mapDetection);
     }
   }
 
@@ -493,6 +501,6 @@ export async function exportArtwork(
     ? 'ブラウザがcanvas.captureStreamをサポートしていません'
     : '利用可能な動画MIMEタイプ(MP4/WebM)が見つかりません';
   console.warn('Falling back to GIF:', reason);
-  return exportAnimatedGif(baseImage, stamps, sceneMotionId, true, reason, quality, onProgress, maskConfig, layoutMode, mapSegment);
+  return exportAnimatedGif(baseImage, stamps, sceneMotionId, true, reason, quality, onProgress, maskConfig, layoutMode, mapSegment, mapDetection);
 }
 

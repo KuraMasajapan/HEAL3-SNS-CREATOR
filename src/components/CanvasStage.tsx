@@ -183,6 +183,7 @@ export default function CanvasStage({
               maskConfig: maskConfigRef.current,
               layoutMode: layoutModeRef.current,
               mapSegment: mapSegmentRef.current,
+              mapDetection: mapDetectionRef.current,
             },
             sceneElapsedMs,
             maskConfigRef.current,
