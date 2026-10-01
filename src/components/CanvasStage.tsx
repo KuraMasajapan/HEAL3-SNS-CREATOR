@@ -9,7 +9,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { BaseImageState, LayoutMode, MapSegmentState, MaskConfig, SceneMotionId, StampItem } from '../engine/types.ts';
 import { renderScene } from '../engine/renderer.ts';
 import { createInitialGestureState, GestureState, hitTestRotateHandle, hitTestStamp } from '../engine/gestures.ts';
-import { POC_CONFIG } from '../engine/config.ts';
+import { HEAL3_MAP_SEGMENT_BOUNDS, POC_CONFIG } from '../engine/config.ts';
 import { MapPanelDetectionResult, renderDetectorDebugOverlay } from '../engine/mapPanelDetector.ts';
 
 interface CanvasStageProps {
@@ -28,6 +28,7 @@ interface CanvasStageProps {
   onUpdateStamp: (stamp: StampItem) => void;
   onFpsUpdate: (fps: number) => void;
   onCanvasMetricsUpdate: (bufferW: number, bufferH: number, displayW: number, displayH: number) => void;
+  onUpdateMapCrop?: (crop: { photoOffsetX?: number; photoOffsetY?: number; photoScale?: number }) => void;
 }
 
 export default function CanvasStage({
@@ -46,12 +47,26 @@ export default function CanvasStage({
   onUpdateStamp,
   onFpsUpdate,
   onCanvasMetricsUpdate,
+  onUpdateMapCrop,
 }: CanvasStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [activeManipulatingId, setActiveManipulatingId] = useState<string | null>(null);
   const gestureStateRef = useRef<GestureState>(createInitialGestureState());
+
+  // Map photo crop gesture state
+  const mapPhotoGestureRef = useRef({
+    isManipulating: false,
+    mode: 'none' as 'none' | 'drag' | 'pinch',
+    startNormX: 0,
+    startNormY: 0,
+    initialOffsetX: 0,
+    initialOffsetY: 0,
+    initialScale: 1.0,
+    initialDist: 0,
+  });
+
   const stampsRef = useRef<StampItem[]>(stamps);
   stampsRef.current = stamps;
 
@@ -69,6 +84,29 @@ export default function CanvasStage({
 
   const mapDetectionRef = useRef<MapPanelDetectionResult | null | undefined>(mapDetection);
   mapDetectionRef.current = mapDetection;
+
+  const getEffectiveMapBounds = () => {
+    const det = mapDetectionRef.current;
+    if (det && det.status !== 'failed' && det.width > 0.1 && det.height > 0.1) {
+      return {
+        x: det.x,
+        y: det.y,
+        width: det.width,
+        height: det.height,
+      };
+    }
+    return HEAL3_MAP_SEGMENT_BOUNDS;
+  };
+
+  const isPointInMapPanel = (normX: number, normY: number): boolean => {
+    const bounds = getEffectiveMapBounds();
+    return (
+      normX >= bounds.x - 0.02 &&
+      normX <= bounds.x + bounds.width + 0.02 &&
+      normY >= bounds.y - 0.02 &&
+      normY <= bounds.y + bounds.height + 0.02
+    );
+  };
 
   const showDetectorOverlayRef = useRef<boolean>(showDetectorOverlay);
   showDetectorOverlayRef.current = showDetectorOverlay;
@@ -282,6 +320,29 @@ export default function CanvasStage({
         };
         setActiveManipulatingId(hit.id);
       } else {
+        // Check if user touched inside Map Panel in photo mode
+        if (
+          mapSegmentRef.current &&
+          mapSegmentRef.current.mode === 'photo' &&
+          mapSegmentRef.current.photoImage &&
+          isPointInMapPanel(norm.normX, norm.normY)
+        ) {
+          onSelectStamp(null);
+          gestureStateRef.current = createInitialGestureState();
+          setActiveManipulatingId(null);
+          mapPhotoGestureRef.current = {
+            isManipulating: true,
+            mode: 'drag',
+            startNormX: norm.normX,
+            startNormY: norm.normY,
+            initialOffsetX: mapSegmentRef.current.photoOffsetX ?? 0,
+            initialOffsetY: mapSegmentRef.current.photoOffsetY ?? 0,
+            initialScale: mapSegmentRef.current.photoScale ?? 1.0,
+            initialDist: 0,
+          };
+          return;
+        }
+
         // Tapped empty space
         onSelectStamp(null);
         gestureStateRef.current = createInitialGestureState();
@@ -309,12 +370,84 @@ export default function CanvasStage({
           initialStampRotation: currentStamp.rotation,
         };
         setActiveManipulatingId(currentStamp.id);
+        return;
+      }
+
+      // Check if Map Photo pinch
+      if (
+        mapSegmentRef.current &&
+        mapSegmentRef.current.mode === 'photo' &&
+        mapSegmentRef.current.photoImage
+      ) {
+        const norm1 = clientToNormalized(t1.clientX, t1.clientY);
+        const norm2 = clientToNormalized(t2.clientX, t2.clientY);
+        const midX = norm1 && norm2 ? (norm1.normX + norm2.normX) / 2 : 0.2;
+        const midY = norm1 && norm2 ? (norm1.normY + norm2.normY) / 2 : 0.4;
+        mapPhotoGestureRef.current = {
+          isManipulating: true,
+          mode: 'pinch',
+          startNormX: midX,
+          startNormY: midY,
+          initialOffsetX: mapSegmentRef.current.photoOffsetX ?? 0,
+          initialOffsetY: mapSegmentRef.current.photoOffsetY ?? 0,
+          initialScale: mapSegmentRef.current.photoScale ?? 1.0,
+          initialDist: dist,
+        };
       }
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
     if (isFinishedMode) return;
+
+    // Handle Map Photo manipulation
+    if (mapPhotoGestureRef.current.isManipulating) {
+      const bounds = getEffectiveMapBounds();
+      if (mapPhotoGestureRef.current.mode === 'drag' && e.touches.length === 1) {
+        const touch = e.touches[0];
+        const norm = clientToNormalized(touch.clientX, touch.clientY);
+        if (norm) {
+          const deltaNormX = norm.normX - mapPhotoGestureRef.current.startNormX;
+          const deltaNormY = norm.normY - mapPhotoGestureRef.current.startNormY;
+          const newOffsetX = mapPhotoGestureRef.current.initialOffsetX + deltaNormX / bounds.width;
+          const newOffsetY = mapPhotoGestureRef.current.initialOffsetY + deltaNormY / bounds.height;
+          onUpdateMapCrop?.({
+            photoOffsetX: Math.max(-3.0, Math.min(3.0, newOffsetX)),
+            photoOffsetY: Math.max(-3.0, Math.min(3.0, newOffsetY)),
+          });
+        }
+        return;
+      } else if (mapPhotoGestureRef.current.mode === 'pinch' && e.touches.length >= 2) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        if (mapPhotoGestureRef.current.initialDist > 0) {
+          const scaleMultiplier = dist / mapPhotoGestureRef.current.initialDist;
+          const newScale = Math.max(0.4, Math.min(6.0, mapPhotoGestureRef.current.initialScale * scaleMultiplier));
+
+          const norm1 = clientToNormalized(t1.clientX, t1.clientY);
+          const norm2 = clientToNormalized(t2.clientX, t2.clientY);
+          let newOffsetX = mapPhotoGestureRef.current.initialOffsetX;
+          let newOffsetY = mapPhotoGestureRef.current.initialOffsetY;
+          if (norm1 && norm2) {
+            const midX = (norm1.normX + norm2.normX) / 2;
+            const midY = (norm1.normY + norm2.normY) / 2;
+            const deltaNormX = midX - mapPhotoGestureRef.current.startNormX;
+            const deltaNormY = midY - mapPhotoGestureRef.current.startNormY;
+            newOffsetX = Math.max(-3.0, Math.min(3.0, mapPhotoGestureRef.current.initialOffsetX + deltaNormX / bounds.width));
+            newOffsetY = Math.max(-3.0, Math.min(3.0, mapPhotoGestureRef.current.initialOffsetY + deltaNormY / bounds.height));
+          }
+
+          onUpdateMapCrop?.({
+            photoScale: newScale,
+            photoOffsetX: newOffsetX,
+            photoOffsetY: newOffsetY,
+          });
+        }
+        return;
+      }
+    }
+
     const g = gestureStateRef.current;
     if (!g.isManipulating || !g.activeStampId) return;
 
@@ -378,6 +511,16 @@ export default function CanvasStage({
   };
 
   const handleTouchEnd = () => {
+    mapPhotoGestureRef.current = {
+      isManipulating: false,
+      mode: 'none',
+      startNormX: 0,
+      startNormY: 0,
+      initialOffsetX: 0,
+      initialOffsetY: 0,
+      initialScale: 1.0,
+      initialDist: 0,
+    };
     gestureStateRef.current = {
       ...gestureStateRef.current,
       isManipulating: false,
@@ -442,6 +585,28 @@ export default function CanvasStage({
       };
       setActiveManipulatingId(hit.id);
     } else {
+      // Check if user touched inside Map Panel in photo mode
+      if (
+        mapSegmentRef.current &&
+        mapSegmentRef.current.mode === 'photo' &&
+        mapSegmentRef.current.photoImage &&
+        isPointInMapPanel(norm.normX, norm.normY)
+      ) {
+        onSelectStamp(null);
+        setActiveManipulatingId(null);
+        mapPhotoGestureRef.current = {
+          isManipulating: true,
+          mode: 'drag',
+          startNormX: norm.normX,
+          startNormY: norm.normY,
+          initialOffsetX: mapSegmentRef.current.photoOffsetX ?? 0,
+          initialOffsetY: mapSegmentRef.current.photoOffsetY ?? 0,
+          initialScale: mapSegmentRef.current.photoScale ?? 1.0,
+          initialDist: 0,
+        };
+        return;
+      }
+
       onSelectStamp(null);
       setActiveManipulatingId(null);
     }
@@ -449,6 +614,24 @@ export default function CanvasStage({
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (isFinishedMode || e.pointerType === 'touch') return;
+
+    // Handle desktop pointer drag for map photo
+    if (mapPhotoGestureRef.current.isManipulating && mapPhotoGestureRef.current.mode === 'drag') {
+      const norm = clientToNormalized(e.clientX, e.clientY);
+      if (norm) {
+        const bounds = getEffectiveMapBounds();
+        const deltaNormX = norm.normX - mapPhotoGestureRef.current.startNormX;
+        const deltaNormY = norm.normY - mapPhotoGestureRef.current.startNormY;
+        const newOffsetX = mapPhotoGestureRef.current.initialOffsetX + deltaNormX / bounds.width;
+        const newOffsetY = mapPhotoGestureRef.current.initialOffsetY + deltaNormY / bounds.height;
+        onUpdateMapCrop?.({
+          photoOffsetX: Math.max(-3.0, Math.min(3.0, newOffsetX)),
+          photoOffsetY: Math.max(-3.0, Math.min(3.0, newOffsetY)),
+        });
+      }
+      return;
+    }
+
     const g = gestureStateRef.current;
     if (!g.isManipulating || !g.activeStampId) return;
 
@@ -479,6 +662,16 @@ export default function CanvasStage({
   };
 
   const handlePointerUp = () => {
+    mapPhotoGestureRef.current = {
+      isManipulating: false,
+      mode: 'none',
+      startNormX: 0,
+      startNormY: 0,
+      initialOffsetX: 0,
+      initialOffsetY: 0,
+      initialScale: 1.0,
+      initialDist: 0,
+    };
     gestureStateRef.current = {
       ...gestureStateRef.current,
       isManipulating: false,
@@ -491,15 +684,28 @@ export default function CanvasStage({
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     if (isFinishedMode) return;
     const currentSelected = stampsRef.current.find((s) => s.id === selectedStampIdRef.current);
-    if (!currentSelected) return;
+    if (currentSelected) {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.02 : -0.02;
+      const newScale = Math.max(0.08, Math.min(0.85, currentSelected.scale + delta));
+      onUpdateStamp({
+        ...currentSelected,
+        scale: newScale,
+      });
+      return;
+    }
 
-    e.preventDefault();
-    const delta = e.deltaY < 0 ? 0.02 : -0.02;
-    const newScale = Math.max(0.08, Math.min(0.85, currentSelected.scale + delta));
-    onUpdateStamp({
-      ...currentSelected,
-      scale: newScale,
-    });
+    // Allow wheel zoom for Map Photo in Photo mode
+    if (mapSegmentRef.current && mapSegmentRef.current.mode === 'photo' && mapSegmentRef.current.photoImage) {
+      const norm = clientToNormalized(e.clientX, e.clientY);
+      if (norm && isPointInMapPanel(norm.normX, norm.normY)) {
+        e.preventDefault();
+        const currentScale = mapSegmentRef.current.photoScale ?? 1.0;
+        const zoomDelta = e.deltaY < 0 ? 0.08 : -0.08;
+        const newScale = Math.max(0.4, Math.min(6.0, currentScale + zoomDelta));
+        onUpdateMapCrop?.({ photoScale: newScale });
+      }
+    }
   };
 
   return (
@@ -508,6 +714,39 @@ export default function CanvasStage({
       id="canvas-container"
       className="relative flex-1 min-h-0 w-full h-full flex items-center justify-center overflow-hidden p-2 sm:p-3"
     >
+      {/* Minimal Photo Crop Adjustment HUD Status */}
+      {mapSegment?.mode === 'photo' && mapSegment.photoImage && !isFinishedMode && (
+        <div className="absolute top-4 left-4 z-20 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-950/85 backdrop-blur-md border border-emerald-500/50 text-emerald-300 text-[11px] font-medium shadow-lg animate-in fade-in duration-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span>写真調整中</span>
+          <span className="text-[10px] text-neutral-400">（ドラッグ移動 / ピンチ拡大縮小）</span>
+        </div>
+      )}
+      {/* Minimal Video Replace HUD Status / Error */}
+      {mapSegment?.mode === 'video' && !isFinishedMode && (
+        <div className={`absolute top-4 left-4 z-20 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-950/90 backdrop-blur-md border shadow-lg animate-in fade-in duration-200 text-[11px] font-medium ${
+          mapSegment.videoError
+            ? 'border-red-500/70 text-red-300'
+            : 'border-sky-500/50 text-sky-300'
+        }`}>
+          {mapSegment.videoError ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+              <span className="text-red-300 font-semibold">{mapSegment.videoError}</span>
+            </>
+          ) : mapSegment.isVideoLoaded ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+              <span>動画プレビュー再生中 (無音・1回再生)</span>
+            </>
+          ) : (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span>動画を読み込み中…</span>
+            </>
+          )}
+        </div>
+      )}
       <canvas
         ref={canvasRef}
         id="heal3-canvas"

@@ -283,7 +283,12 @@ export function renderMapSegmentPhoto(
   photoImage: HTMLImageElement,
   canvasWidth: number,
   canvasHeight: number,
-  bounds: MapSegmentBounds = HEAL3_MAP_SEGMENT_BOUNDS
+  bounds: MapSegmentBounds = HEAL3_MAP_SEGMENT_BOUNDS,
+  crop?: {
+    photoOffsetX?: number;
+    photoOffsetY?: number;
+    photoScale?: number;
+  }
 ): void {
   const segX = bounds.x * canvasWidth;
   const segY = bounds.y * canvasHeight;
@@ -319,14 +324,124 @@ export function renderMapSegmentPhoto(
   }
   ctx.clip();
 
-  // Aspect-fill (cover) & Center crop
-  const scale = Math.max(segW / imgW, segH / imgH);
-  const renderW = imgW * scale;
-  const renderH = imgH * scale;
+  // Aspect-fill (cover) base scale
+  const baseScale = Math.max(segW / imgW, segH / imgH);
+  // User scale multiplier (default 1.0, preserving strict original aspect ratio)
+  const userScale = Math.max(0.4, Math.min(8.0, crop?.photoScale ?? 1.0));
+  const effectiveScale = baseScale * userScale;
+
+  const renderW = imgW * effectiveScale;
+  const renderH = imgH * effectiveScale;
+
+  // Normalized offsets relative to map segment dimension
+  const offsetX = (crop?.photoOffsetX ?? 0) * segW;
+  const offsetY = (crop?.photoOffsetY ?? 0) * segH;
+
+  const drawX = segX + (segW - renderW) / 2 + offsetX;
+  const drawY = segY + (segH - renderH) / 2 + offsetY;
+
+  ctx.drawImage(photoImage, drawX, drawY, renderW, renderH);
+
+  ctx.restore();
+}
+
+/**
+ * Renders video replacement into the Map Segment area (Preview PoC)
+ * (Strict aspect-ratio preservation, center-crop, card border-radius clipping, muted, single-play)
+ */
+export function renderMapSegmentVideo(
+  ctx: CanvasRenderingContext2D,
+  videoElement: HTMLVideoElement,
+  canvasWidth: number,
+  canvasHeight: number,
+  bounds: MapSegmentBounds = HEAL3_MAP_SEGMENT_BOUNDS
+): void {
+  const segX = bounds.x * canvasWidth;
+  const segY = bounds.y * canvasHeight;
+  const segW = bounds.width * canvasWidth;
+  const segH = bounds.height * canvasHeight;
+  const segRadius = (bounds.borderRadius ?? 0) * canvasWidth;
+
+  const vidW = videoElement.videoWidth || videoElement.width;
+  const vidH = videoElement.videoHeight || videoElement.height;
+  if (vidW <= 0 || vidH <= 0 || segW <= 0 || segH <= 0) return;
+
+  ctx.save();
+
+  // Clip strictly to Map Segment bounds (with card border radius if specified)
+  ctx.beginPath();
+  if (segRadius > 0) {
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(segX, segY, segW, segH, segRadius);
+    } else {
+      ctx.moveTo(segX + segRadius, segY);
+      ctx.lineTo(segX + segW - segRadius, segY);
+      ctx.arcTo(segX + segW, segY, segX + segW, segY + segRadius, segRadius);
+      ctx.lineTo(segX + segW, segY + segH - segRadius);
+      ctx.arcTo(segX + segW, segY + segH, segX + segW - segRadius, segY + segH, segRadius);
+      ctx.lineTo(segX + segRadius, segY + segH);
+      ctx.arcTo(segX, segY + segH, segX, segY + segH - segRadius, segRadius);
+      ctx.lineTo(segX, segY + segRadius);
+      ctx.arcTo(segX, segY, segX + segRadius, segY, segRadius);
+      ctx.closePath();
+    }
+  } else {
+    ctx.rect(segX, segY, segW, segH);
+  }
+  ctx.clip();
+
+  // Aspect-fill (cover) & Center crop without distortion
+  const scale = Math.max(segW / vidW, segH / vidH);
+  const renderW = vidW * scale;
+  const renderH = vidH * scale;
   const drawX = segX + (segW - renderW) / 2;
   const drawY = segY + (segH - renderH) / 2;
 
-  ctx.drawImage(photoImage, drawX, drawY, renderW, renderH);
+  ctx.drawImage(videoElement, drawX, drawY, renderW, renderH);
+
+  ctx.restore();
+}
+
+/**
+ * Renders explicit error banner in Map Segment area when video cannot be played
+ */
+export function renderMapSegmentVideoError(
+  ctx: CanvasRenderingContext2D,
+  errorMessage: string,
+  canvasWidth: number,
+  canvasHeight: number,
+  bounds: MapSegmentBounds = HEAL3_MAP_SEGMENT_BOUNDS
+): void {
+  const segX = bounds.x * canvasWidth;
+  const segY = bounds.y * canvasHeight;
+  const segW = bounds.width * canvasWidth;
+  const segH = bounds.height * canvasHeight;
+  const segRadius = (bounds.borderRadius ?? 0) * canvasWidth;
+
+  ctx.save();
+  ctx.beginPath();
+  if (segRadius > 0 && typeof ctx.roundRect === 'function') {
+    ctx.roundRect(segX, segY, segW, segH, segRadius);
+  } else {
+    ctx.rect(segX, segY, segW, segH);
+  }
+  ctx.clip();
+
+  // Dark backdrop with subtle red border to highlight failure explicitly
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+  ctx.fillRect(segX, segY, segW, segH);
+
+  ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)';
+  ctx.lineWidth = Math.max(2, canvasWidth * 0.004);
+  ctx.strokeRect(segX + 2, segY + 2, segW - 4, segH - 4);
+
+  // Warning icon / message
+  ctx.fillStyle = '#ef4444';
+  const fontSize = Math.max(11, Math.round(canvasWidth * 0.028));
+  ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('⚠ ' + errorMessage, segX + segW / 2, segY + segH / 2);
 
   ctx.restore();
 }
@@ -786,7 +901,17 @@ export function renderScene(
       : HEAL3_MAP_SEGMENT_BOUNDS;
 
   if (activeMapSegment && activeMapSegment.mode === 'photo' && activeMapSegment.photoImage) {
-    renderMapSegmentPhoto(ctx, activeMapSegment.photoImage, canvasWidth, canvasHeight, effectiveBounds);
+    renderMapSegmentPhoto(ctx, activeMapSegment.photoImage, canvasWidth, canvasHeight, effectiveBounds, {
+      photoOffsetX: activeMapSegment.photoOffsetX,
+      photoOffsetY: activeMapSegment.photoOffsetY,
+      photoScale: activeMapSegment.photoScale,
+    });
+  } else if (activeMapSegment && activeMapSegment.mode === 'video') {
+    if (activeMapSegment.videoError) {
+      renderMapSegmentVideoError(ctx, activeMapSegment.videoError, canvasWidth, canvasHeight, effectiveBounds);
+    } else if (activeMapSegment.videoElement && activeMapSegment.isVideoLoaded) {
+      renderMapSegmentVideo(ctx, activeMapSegment.videoElement, canvasWidth, canvasHeight, effectiveBounds);
+    }
   }
   if (activeMapSegment && activeMapSegment.framePreset && activeMapSegment.framePreset !== 'none') {
     renderMapPanelFrame(ctx, activeMapSegment.framePreset, canvasWidth, canvasHeight, effectiveBounds);

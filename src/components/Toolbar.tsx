@@ -9,7 +9,7 @@
  */
 
 import React, { useRef } from 'react';
-import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles, Sun, Focus, MapPin, Image, Camera, Square, Scan } from 'lucide-react';
+import { Star, Heart, Circle, Trash2, Zap, Palette, Clapperboard, Plus, UserCheck, ZoomIn, ZoomOut, RotateCcw, Scissors, Sparkles, Sun, Focus, MapPin, Image, Camera, Square, Scan, Film, Play, AlertCircle } from 'lucide-react';
 import { LayoutMode, MapFramePreset, MapSegmentMode, MaskConfig, MaskIntensity, MotionId, SceneMotionId, StampItem, StampType } from '../engine/types.ts';
 import { MOTION_RECIPES, SCENE_MOTION_RECIPES } from '../engine/motion.ts';
 import { MapPanelDetectionResult } from '../engine/mapPanelDetector.ts';
@@ -23,6 +23,8 @@ interface ToolbarProps {
   mapMode: MapSegmentMode;
   mapFramePreset: MapFramePreset;
   hasMapPhoto: boolean;
+  hasMapVideo?: boolean;
+  mapVideoError?: string | null;
   hasBaseImage?: boolean;
   mapDetection?: MapPanelDetectionResult | null;
   showDetectorOverlay?: boolean;
@@ -34,6 +36,9 @@ interface ToolbarProps {
   onUpdateMapMode: (mapMode: MapSegmentMode) => void;
   onUpdateMapFramePreset: (preset: MapFramePreset) => void;
   onSelectMapPhoto: (file: File) => void;
+  onSelectMapVideo?: (file: File) => void;
+  onReplayMapVideo?: () => void;
+  onResetMapCrop?: () => void;
   onAddStamp: (type: StampType) => void;
   onAddForegroundSample: () => void;
   onAddForegroundFile: (file: File) => void;
@@ -62,6 +67,8 @@ export default function Toolbar({
   mapMode,
   mapFramePreset,
   hasMapPhoto,
+  hasMapVideo = false,
+  mapVideoError = null,
   hasBaseImage,
   mapDetection,
   showDetectorOverlay = true,
@@ -73,6 +80,9 @@ export default function Toolbar({
   onUpdateMapMode,
   onUpdateMapFramePreset,
   onSelectMapPhoto,
+  onSelectMapVideo,
+  onReplayMapVideo,
+  onResetMapCrop,
   onAddStamp,
   onAddForegroundSample,
   onAddForegroundFile,
@@ -84,6 +94,7 @@ export default function Toolbar({
 }: ToolbarProps) {
   const fgFileInputRef = useRef<HTMLInputElement>(null);
   const mapFileInputRef = useRef<HTMLInputElement>(null);
+  const mapVideoInputRef = useRef<HTMLInputElement>(null);
 
   const handleFgFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -106,11 +117,30 @@ export default function Toolbar({
     }
   };
 
+  const handleMapVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onSelectMapVideo?.(file);
+    }
+    if (e.target) {
+      e.target.value = '';
+    }
+  };
+
   const handlePhotoBtnClick = () => {
-    if (hasMapPhoto && mapMode === 'original') {
+    if (hasMapPhoto && mapMode !== 'photo') {
       onUpdateMapMode('photo');
     } else {
       mapFileInputRef.current?.click();
+    }
+  };
+
+  const handleVideoBtnClick = () => {
+    if (hasMapVideo && mapMode !== 'video') {
+      onUpdateMapMode('video');
+      onReplayMapVideo?.();
+    } else {
+      mapVideoInputRef.current?.click();
     }
   };
 
@@ -309,6 +339,15 @@ export default function Toolbar({
           onChange={handleMapFileChange}
         />
 
+        {/* Hidden file input for Video replacement */}
+        <input
+          ref={mapVideoInputRef}
+          type="file"
+          accept="video/mp4,video/quicktime,.mp4,.mov"
+          className="hidden"
+          onChange={handleMapVideoChange}
+        />
+
         {/* Original button */}
         <button
           id="btn-map-original"
@@ -338,6 +377,66 @@ export default function Toolbar({
           {mapMode === 'photo' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
         </button>
 
+        {/* Video button */}
+        <button
+          id="btn-map-video"
+          onClick={handleVideoBtnClick}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition whitespace-nowrap active:scale-95 flex items-center gap-1 flex-shrink-0 ${
+            mapMode === 'video'
+              ? 'bg-sky-600/30 text-sky-200 border-sky-500/60 font-semibold shadow-sm shadow-sky-500/10'
+              : 'bg-neutral-800/70 text-neutral-400 border-neutral-700/60 hover:bg-neutral-700/60 hover:text-neutral-300'
+          }`}
+        >
+          <Film className="w-3 h-3" />
+          <span>Video</span>
+          {mapMode === 'video' && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
+        </button>
+
+        {/* Video mode controls */}
+        {mapMode === 'video' && (
+          <>
+            {mapVideoError ? (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="text-[10px] text-red-300 bg-red-950/90 border border-red-700/80 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium">
+                  <AlertCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
+                  <span>この動画形式は再生できません</span>
+                </span>
+                <button
+                  id="btn-map-video-change-err"
+                  onClick={() => mapVideoInputRef.current?.click()}
+                  className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-neutral-700 bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition active:scale-95 whitespace-nowrap"
+                >
+                  別の動画を選択
+                </button>
+              </div>
+            ) : hasMapVideo ? (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  id="btn-map-video-change"
+                  onClick={() => mapVideoInputRef.current?.click()}
+                  title="動画を変更"
+                  className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-neutral-700/70 bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition active:scale-95 flex items-center gap-1 flex-shrink-0"
+                >
+                  <Film className="w-3 h-3 text-sky-400" />
+                  <span>動画変更</span>
+                </button>
+                {onReplayMapVideo && (
+                  <button
+                    id="btn-map-video-replay"
+                    onClick={onReplayMapVideo}
+                    title="動画を最初から再生"
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-sky-600/50 bg-sky-950/60 text-sky-300 hover:bg-sky-900/60 transition active:scale-95 flex items-center gap-1 flex-shrink-0"
+                  >
+                    <Play className="w-2.5 h-2.5 fill-sky-400 text-sky-400" />
+                    <span>再生</span>
+                  </button>
+                )}
+                <span className="text-[9px] text-neutral-400 font-mono">（無音・1回再生）</span>
+              </div>
+            ) : null}
+          </>
+        )}
+
         {/* Quick Change button if Photo is selected and has photo loaded */}
         {hasMapPhoto && (
           <button
@@ -349,6 +448,27 @@ export default function Toolbar({
             <Camera className="w-3 h-3 text-emerald-400" />
             <span>写真変更</span>
           </button>
+        )}
+
+        {/* Minimal indicator: Photo Mode Crop Status */}
+        {mapMode === 'photo' && hasMapPhoto && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-[10px] text-emerald-300 bg-emerald-950/80 border border-emerald-700/70 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>写真調整中</span>
+            </span>
+            {onResetMapCrop && (
+              <button
+                id="btn-reset-map-crop"
+                onClick={onResetMapCrop}
+                title="写真の位置と拡大率をリセット"
+                className="text-[10px] text-neutral-400 hover:text-neutral-200 px-1.5 py-0.5 rounded border border-neutral-700/60 bg-neutral-800/80 flex items-center gap-1 transition active:scale-95"
+              >
+                <RotateCcw className="w-2.5 h-2.5" />
+                <span>リセット</span>
+              </button>
+            )}
+          </div>
         )}
 
         {/* Map Panel Detector PoC toggle button */}

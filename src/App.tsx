@@ -75,12 +75,19 @@ export default function App() {
   // Layout state (Minimal PoC: Original vs Character Focus)
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('original');
 
-  // Map Segment Replacement state (Minimal PoC: Original vs Photo Replacement & Frame Preset)
+  // Map Segment Replacement state (Minimal PoC: Original vs Photo Replacement & Frame Preset & Video Replace)
   const [mapSegment, setMapSegment] = useState<MapSegmentState>({
     mode: 'original',
     photoUrl: null,
     photoImage: null,
     framePreset: 'none',
+    photoOffsetX: 0,
+    photoOffsetY: 0,
+    photoScale: 1.0,
+    videoUrl: null,
+    videoElement: null,
+    videoError: null,
+    isVideoLoaded: false,
   });
 
   // Map Panel Detector PoC state (Zero-base image-content analysis)
@@ -454,10 +461,16 @@ export default function App() {
 
   // Map Segment Photo Replace & Frame Preset handlers (PoC)
   const handleUpdateMapMode = (mode: MapSegmentMode) => {
-    setMapSegment((prev) => ({
-      ...prev,
-      mode,
-    }));
+    setMapSegment((prev) => {
+      if (mode === 'video' && prev.videoElement && prev.isVideoLoaded && !prev.videoError) {
+        prev.videoElement.currentTime = 0;
+        prev.videoElement.play().catch(() => {});
+      }
+      return {
+        ...prev,
+        mode,
+      };
+    });
   };
 
   const handleUpdateMapFramePreset = (framePreset: MapFramePreset) => {
@@ -466,6 +479,95 @@ export default function App() {
       framePreset,
     }));
   };
+
+  const handleSelectMapVideo = (file: File) => {
+    // Revoke previous blob URL if exists
+    if (mapSegment.videoUrl && mapSegment.videoUrl.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(mapSegment.videoUrl);
+      } catch (_e) {
+        // ignore
+      }
+    }
+    if (mapSegment.videoElement) {
+      try {
+        mapSegment.videoElement.pause();
+        mapSegment.videoElement.src = '';
+        mapSegment.videoElement.load();
+      } catch (_e) {
+        // ignore
+      }
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
+    video.loop = false;
+    video.autoplay = true;
+    video.preload = 'auto';
+
+    let hasHandledError = false;
+    const triggerError = (msg: string) => {
+      if (hasHandledError) return;
+      hasHandledError = true;
+      setMapSegment((prev) => ({
+        ...prev,
+        mode: 'video',
+        videoUrl: objectUrl,
+        videoElement: video,
+        isVideoLoaded: false,
+        videoError: msg,
+      }));
+    };
+
+    video.onerror = () => {
+      triggerError('この動画形式は再生できません');
+    };
+
+    video.onloadeddata = () => {
+      if (hasHandledError) return;
+      setMapSegment((prev) => ({
+        ...prev,
+        mode: 'video',
+        videoUrl: objectUrl,
+        videoElement: video,
+        isVideoLoaded: true,
+        videoError: null,
+      }));
+      video.currentTime = 0;
+      video.play().catch((err) => {
+        if (err && err.name !== 'AbortError') {
+          console.warn('[Video playback error]:', err);
+          triggerError('この動画形式は再生できません');
+        }
+      });
+    };
+
+    setMapSegment((prev) => ({
+      ...prev,
+      mode: 'video',
+      videoUrl: objectUrl,
+      videoElement: video,
+      isVideoLoaded: false,
+      videoError: null,
+    }));
+
+    video.src = objectUrl;
+    video.load();
+  };
+
+  const handleReplayMapVideo = useCallback(() => {
+    if (mapSegment.videoElement && mapSegment.isVideoLoaded && !mapSegment.videoError) {
+      mapSegment.videoElement.currentTime = 0;
+      mapSegment.videoElement.play().catch((err) => {
+        console.warn('Replay failed:', err);
+      });
+    }
+  }, [mapSegment.videoElement, mapSegment.isVideoLoaded, mapSegment.videoError]);
 
   const handleSelectMapPhoto = (file: File) => {
     try {
@@ -482,6 +584,9 @@ export default function App() {
             mode: 'photo',
             photoUrl: dataUrl,
             photoImage: img,
+            photoOffsetX: 0,
+            photoOffsetY: 0,
+            photoScale: 1.0,
           }));
         };
         img.src = dataUrl;
@@ -491,6 +596,22 @@ export default function App() {
       alert(err.message || '写真の処理に失敗しました');
     }
   };
+
+  const handleUpdateMapCrop = useCallback((crop: { photoOffsetX?: number; photoOffsetY?: number; photoScale?: number }) => {
+    setMapSegment((prev) => ({
+      ...prev,
+      ...crop,
+    }));
+  }, []);
+
+  const handleResetMapCrop = useCallback(() => {
+    setMapSegment((prev) => ({
+      ...prev,
+      photoOffsetX: 0,
+      photoOffsetY: 0,
+      photoScale: 1.0,
+    }));
+  }, []);
 
   const selectedStamp = stamps.find((s) => s.id === selectedStampId) || null;
 
@@ -531,6 +652,7 @@ export default function App() {
           onUpdateStamp={handleUpdateStamp}
           onFpsUpdate={handleFpsUpdate}
           onCanvasMetricsUpdate={handleCanvasMetricsUpdate}
+          onUpdateMapCrop={handleUpdateMapCrop}
         />
       </main>
 
@@ -545,6 +667,8 @@ export default function App() {
           mapMode={mapSegment.mode}
           mapFramePreset={mapSegment.framePreset}
           hasMapPhoto={!!mapSegment.photoImage}
+          hasMapVideo={!!mapSegment.videoElement}
+          mapVideoError={mapSegment.videoError}
           hasBaseImage={baseImage.isLoaded}
           mapDetection={mapDetection}
           showDetectorOverlay={showDetectorOverlay}
@@ -563,6 +687,9 @@ export default function App() {
           onUpdateMapMode={handleUpdateMapMode}
           onUpdateMapFramePreset={handleUpdateMapFramePreset}
           onSelectMapPhoto={handleSelectMapPhoto}
+          onSelectMapVideo={handleSelectMapVideo}
+          onReplayMapVideo={handleReplayMapVideo}
+          onResetMapCrop={handleResetMapCrop}
           onAddStamp={handleAddStamp}
           onAddForegroundSample={handleAddForegroundSample}
           onAddForegroundFile={handleAddForegroundFile}

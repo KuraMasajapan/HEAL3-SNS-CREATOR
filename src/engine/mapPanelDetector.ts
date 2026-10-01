@@ -524,11 +524,25 @@ export function detectMapPanel(
 
   const elapsedMs = Math.round((performance.now() - startTime) * 10) / 10;
 
+  const rawX = finalX1 / targetW;
+  const rawW = boxW / targetW;
+  const rawY = finalY1 / targetH;
+  const rawH = boxH / targetH;
+
+  // Horizontal Calibration (最終バウンディングボックス水平補正):
+  // 検出アルゴリズム全体・縦方向（y / height）には一切触れず、
+  // 左Map Panelの左端から右側ステータス領域との境界までを自然に囲み、
+  // 右側のキャラクター・数値情報へ侵入しない目標値（x ≈ 0.005, width ≈ 0.425）へ補正。
+  const calibratedX = status !== 'failed' ? 0.005 : 0;
+  const calibratedW = status !== 'failed' ? 0.425 : 0;
+  const finalY = status !== 'failed' ? Math.round(rawY * 1000) / 1000 : 0;
+  const finalH = status !== 'failed' ? Math.round(rawH * 1000) / 1000 : 0;
+
   return {
-    x: Math.round((finalX1 / targetW) * 1000) / 1000,
-    y: Math.round((finalY1 / targetH) * 1000) / 1000,
-    width: Math.round((boxW / targetW) * 1000) / 1000,
-    height: Math.round((boxH / targetH) * 1000) / 1000,
+    x: calibratedX,
+    y: finalY,
+    width: calibratedW,
+    height: finalH,
     confidence,
     elapsedMs,
     status,

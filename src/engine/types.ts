@@ -25,7 +25,7 @@ export type LayoutMode = 'original' | 'character_focus';
 /**
  * Map Segment Mode & Frame Presets (Map Panel Photo Replace PoC)
  */
-export type MapSegmentMode = 'original' | 'photo';
+export type MapSegmentMode = 'original' | 'photo' | 'video';
 
 export type MapFramePreset = 'none' | 'pink' | 'green' | 'yellow' | 'white';
 
@@ -34,6 +34,17 @@ export interface MapSegmentState {
   photoUrl: string | null;
   photoImage: HTMLImageElement | null;
   framePreset: MapFramePreset;
+  /** Photo Crop Adjustment: normalized offset X relative to map segment width (0 = center) */
+  photoOffsetX?: number;
+  /** Photo Crop Adjustment: normalized offset Y relative to map segment height (0 = center) */
+  photoOffsetY?: number;
+  /** Photo Crop Adjustment: scale multiplier (1.0 = aspect-fill, >1.0 = zoom in) */
+  photoScale?: number;
+  /** Video Replace PoC state */
+  videoUrl?: string | null;
+  videoElement?: HTMLVideoElement | null;
+  videoError?: string | null;
+  isVideoLoaded?: boolean;
 }
 
 /**
