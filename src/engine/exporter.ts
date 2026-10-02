@@ -100,6 +100,227 @@ export function isCaptureStreamSupported(canvas: HTMLCanvasElement): boolean {
 }
 
 /**
+ * Safely seeks an HTMLVideoElement to a specific timestamp in seconds,
+ * ensuring the decoder has actually completed seeking before resolving,
+ * and handling Safari/iOS WebKit quirks without race conditions.
+ *
+ * Rules:
+ * 1. Checks video metadata and ensures readyState >= 2 (frame data available).
+ * 2. Pauses video during export frame-by-frame seeking to avoid playback drift.
+ * 3. Waits for any in-flight seek to settle before dispatching a new seek.
+ * 4. Clamps target to [0, duration - 0.001] to stop on the final frame without
+ *    triggering Safari's 'ended' state which can freeze the buffer.
+ * 5. Skips redundant seek if already at clampedTarget and frame is ready.
+ * 6. Waits for 'seeked' and leverages requestVideoFrameCallback (rVFC) if available,
+ *    with a short 40ms failsafe timer for paused videos in Safari.
+ * 7. Rejects with an explicit Error on decode error or timeout (3000ms).
+ */
+export async function seekVideoToTime(
+  video: HTMLVideoElement,
+  targetTimeSec: number,
+  timeoutMs = 3000
+): Promise<void> {
+  // 1. Ensure video has metadata loaded
+  if (video.readyState < 1) {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        video.removeEventListener('loadedmetadata', onLoaded);
+        video.removeEventListener('error', onError);
+        reject(new Error('動画メタデータの読み込みがタイムアウトしました'));
+      }, 3000);
+      const onLoaded = () => {
+        clearTimeout(timer);
+        video.removeEventListener('loadedmetadata', onLoaded);
+        video.removeEventListener('error', onError);
+        resolve();
+      };
+      const onError = () => {
+        clearTimeout(timer);
+        video.removeEventListener('loadedmetadata', onLoaded);
+        video.removeEventListener('error', onError);
+        reject(new Error('動画メタデータの読み込みに失敗しました'));
+      };
+      video.addEventListener('loadedmetadata', onLoaded, { once: true });
+      video.addEventListener('error', onError, { once: true });
+    });
+  }
+
+  // 2. Pause video during export frame-by-frame seeking
+  if (!video.paused) {
+    try {
+      video.pause();
+    } catch (_e) {
+      // ignore
+    }
+  }
+
+  // 3. Wait for any in-progress seek to settle before dispatching a new seek
+  if (video.seeking) {
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const t = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('前フレームの動画シーク待機がタイムアウトしました'));
+      }, timeoutMs);
+      const cleanup = () => {
+        clearTimeout(t);
+        video.removeEventListener('seeked', onDone);
+        video.removeEventListener('error', onErr);
+      };
+      const onDone = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      const onErr = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('前フレームの動画シーク中にエラーが発生しました'));
+      };
+      video.addEventListener('seeked', onDone, { once: true });
+      video.addEventListener('error', onErr, { once: true });
+    });
+  }
+
+  // 4. Ensure current frame data is loaded (HAVE_CURRENT_DATA or higher)
+  if (video.readyState < 2) {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        video.removeEventListener('loadeddata', onData);
+        video.removeEventListener('canplay', onData);
+        video.removeEventListener('error', onError);
+        reject(new Error('動画フレームデータの待機がタイムアウトしました'));
+      }, 3000);
+      const onData = () => {
+        clearTimeout(timer);
+        video.removeEventListener('loadeddata', onData);
+        video.removeEventListener('canplay', onData);
+        video.removeEventListener('error', onError);
+        resolve();
+      };
+      const onError = () => {
+        clearTimeout(timer);
+        video.removeEventListener('loadeddata', onData);
+        video.removeEventListener('canplay', onData);
+        video.removeEventListener('error', onError);
+        reject(new Error('動画フレームデータの読み込みに失敗しました'));
+      };
+      video.addEventListener('loadeddata', onData, { once: true });
+      video.addEventListener('canplay', onData, { once: true });
+      video.addEventListener('error', onError, { once: true });
+    });
+  }
+
+  // 5. Determine safe seek boundary
+  // Clamping to [0, duration - 0.001] stops cleanly on the final frame without triggering
+  // WebKit 'ended' event which can drop readyState or freeze the frame buffer.
+  const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : Infinity;
+  const maxSeekable = Number.isFinite(duration) ? Math.max(0, duration - 0.001) : Infinity;
+  const clampedTarget = Math.max(0, Math.min(targetTimeSec, maxSeekable));
+
+  // 6. If already at target time and data is ready, skip redundant seek (e.g. video stopped at end frame)
+  if (Math.abs(video.currentTime - clampedTarget) < 0.002 && video.readyState >= 2) {
+    return;
+  }
+
+  // 7. Perform seek and wait for both seeked and frame presentation
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let timer: any = null;
+
+    const cleanup = () => {
+      settled = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      video.removeEventListener('seeked', onSeeked);
+      video.removeEventListener('error', onError);
+    };
+
+    const onSeeked = () => {
+      if (settled) return;
+
+      // Safari 15.4+ and modern Chromium support requestVideoFrameCallback
+      if (typeof (video as any).requestVideoFrameCallback === 'function') {
+        let rVfcFired = false;
+        let rVfcId: number | null = null;
+        let rVfcTimer: any = null;
+
+        const completePresentation = () => {
+          if (rVfcFired || settled) return;
+          rVfcFired = true;
+          if (rVfcTimer) clearTimeout(rVfcTimer);
+          cleanup();
+          resolve();
+        };
+
+        try {
+          rVfcId = (video as any).requestVideoFrameCallback(() => {
+            completePresentation();
+          });
+        } catch (_e) {
+          cleanup();
+          resolve();
+          return;
+        }
+
+        // Failsafe timer for Safari on paused videos:
+        // When a video element is paused, Safari compositor might throttle rVFC until the next paint.
+        // A 40ms safety timer guarantees export never stalls while giving rVFC the chance to fire.
+        rVfcTimer = setTimeout(() => {
+          if (!rVfcFired && !settled) {
+            if (rVfcId !== null && typeof (video as any).cancelVideoFrameCallback === 'function') {
+              try {
+                (video as any).cancelVideoFrameCallback(rVfcId);
+              } catch (_e) {
+                // ignore
+              }
+            }
+            completePresentation();
+          }
+        }, 40);
+      } else {
+        // Fallback for browsers without rVFC:
+        // A requestAnimationFrame tick ensures the main paint queue has completed before drawImage
+        requestAnimationFrame(() => {
+          cleanup();
+          resolve();
+        });
+      }
+    };
+
+    const onError = () => {
+      if (settled) return;
+      cleanup();
+      const mediaErr = video.error;
+      const msg = mediaErr ? `(コード: ${mediaErr.code}) ${mediaErr.message || 'デコード失敗'}` : 'デコードエラー';
+      reject(new Error(`動画フレームのシーク失敗: ${msg}`));
+    };
+
+    timer = setTimeout(() => {
+      if (settled) return;
+      cleanup();
+      reject(new Error(`動画フレームのシークがタイムアウトしました (${clampedTarget.toFixed(2)}s)`));
+    }, timeoutMs);
+
+    video.addEventListener('seeked', onSeeked, { once: true });
+    video.addEventListener('error', onError, { once: true });
+
+    try {
+      video.currentTime = clampedTarget;
+    } catch (err: any) {
+      cleanup();
+      reject(new Error(`動画currentTime設定エラー: ${err.message || String(err)}`));
+    }
+  });
+}
+
+/**
  * Exports single high-resolution still image (when no motion is used)
  */
 export async function exportStillImage(
@@ -115,6 +336,22 @@ export async function exportStillImage(
 ): Promise<ExportResult> {
   const startTime = performance.now();
   onProgress?.(20, '静止画をレンダリング中…');
+
+  // If video is present, ensure video is at frame 0
+  const isVideoSegment = Boolean(
+    mapSegment &&
+    mapSegment.mode === 'video' &&
+    mapSegment.videoElement &&
+    mapSegment.isVideoLoaded &&
+    !mapSegment.videoError
+  );
+  if (isVideoSegment) {
+    try {
+      await seekVideoToTime(mapSegment!.videoElement!, 0);
+    } catch (err) {
+      console.warn('Still image video seek warning:', err);
+    }
+  }
 
   const origW = baseImage.processedWidth || baseImage.originalWidth || 720;
   const origH = baseImage.processedHeight || baseImage.originalHeight || 1280;
@@ -223,15 +460,39 @@ export async function exportAnimatedGif(
   }
 
   const gif = GIFEncoder();
+  const isVideoSegment = Boolean(
+    mapSegment &&
+    mapSegment.mode === 'video' &&
+    mapSegment.videoElement &&
+    mapSegment.isVideoLoaded &&
+    !mapSegment.videoError
+  );
+  const videoElem = isVideoSegment ? mapSegment!.videoElement! : null;
+
   const fps = POC_CONFIG.GIF_EXPORT_FPS;
-  const durationSec = POC_CONFIG.VIDEO_DURATION_SEC;
+  const durationSec = videoElem && Number.isFinite(videoElem.duration) && videoElem.duration > 0
+    ? Math.max(POC_CONFIG.VIDEO_DURATION_SEC, Math.min(4.0, Number(videoElem.duration.toFixed(2))))
+    : POC_CONFIG.VIDEO_DURATION_SEC;
   const totalDurationMs = durationSec * 1000;
   const totalFrames = Math.round(fps * durationSec);
   const frameIntervalMs = 1000 / fps;
   const gifDelay = Math.round(frameIntervalMs / 10); // in hundredths of a second
 
+  // Pre-sync video to 0s if present
+  if (videoElem) {
+    onProgress?.(10, '動画の先頭フレームを同期中…');
+    await seekVideoToTime(videoElem, 0);
+  }
+
   for (let f = 0; f < totalFrames; f++) {
     const timeMs = f * frameIntervalMs;
+    const targetVideoTimeSec = timeMs / 1000;
+
+    // Time-synchronize video element before rendering frame
+    if (videoElem) {
+      await seekVideoToTime(videoElem, targetVideoTimeSec);
+    }
+
     // Uses the EXACT SAME deterministic renderScene, Scene Motion, Item Motion, Mask, Layout, and Map Segment
     renderScene(ctx, baseImage, stamps, width, height, timeMs, sceneMotionId, totalDurationMs, {
       isInteractivePreview: false,
@@ -329,14 +590,48 @@ export async function exportVideoMediaRecorder(
   canvas.style.pointerEvents = 'none';
   document.body.appendChild(canvas);
 
+  const isVideoSegment = Boolean(
+    mapSegment &&
+    mapSegment.mode === 'video' &&
+    mapSegment.videoElement &&
+    mapSegment.isVideoLoaded &&
+    !mapSegment.videoError
+  );
+  const videoElem = isVideoSegment ? mapSegment!.videoElement! : null;
+
   try {
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) {
       throw new Error('Canvas初期化失敗');
     }
 
-    const durationSec = POC_CONFIG.VIDEO_DURATION_SEC;
+    const fps = POC_CONFIG.VIDEO_EXPORT_FPS;
+    const durationSec = videoElem && Number.isFinite(videoElem.duration) && videoElem.duration > 0
+      ? Math.max(POC_CONFIG.VIDEO_DURATION_SEC, Math.min(4.0, Number(videoElem.duration.toFixed(2))))
+      : POC_CONFIG.VIDEO_DURATION_SEC;
     const totalDurationMs = durationSec * 1000;
+    const totalFrames = Math.round(fps * durationSec);
+    const frameIntervalMs = 1000 / fps;
+
+    // 1-6. Prepare video for real-time synchronized playback
+    if (videoElem) {
+      onProgress?.(10, '動画の先頭フレームを同期中…');
+      // 1. Export開始前にvideoをpause
+      if (!videoElem.paused) {
+        try {
+          videoElem.pause();
+        } catch (_e) {}
+      }
+      // 4. playbackRate = 1.0
+      videoElem.playbackRate = 1.0;
+      // 5. muted = true
+      videoElem.muted = true;
+      videoElem.defaultMuted = true;
+      // 6. loop = false (自動ループ禁止・末尾保持)
+      videoElem.loop = false;
+      // 2. currentTime = 0 & 3. 0秒へのseek完了を待つ
+      await seekVideoToTime(videoElem, 0);
+    }
 
     // Initial draw
     renderScene(ctx, baseImage, stamps, width, height, 0, sceneMotionId, totalDurationMs, {
@@ -345,11 +640,8 @@ export async function exportVideoMediaRecorder(
       maskConfig,
       layoutMode,
       mapSegment,
+      mapDetection,
     }, undefined, maskConfig, layoutMode, mapSegment);
-
-    const fps = POC_CONFIG.VIDEO_EXPORT_FPS;
-    const totalFrames = Math.round(fps * durationSec);
-    const frameIntervalMs = 1000 / fps;
 
     // Check captureStream
     const captureStreamFn = (canvas as any).captureStream || (canvas as any).mozCaptureStream;
@@ -358,6 +650,7 @@ export async function exportVideoMediaRecorder(
     }
 
     const stream = captureStreamFn.call(canvas, fps);
+    const videoTrack = stream.getVideoTracks()?.[0];
     let recorder: MediaRecorder;
     try {
       recorder = new MediaRecorder(stream, {
@@ -387,12 +680,31 @@ export async function exportVideoMediaRecorder(
       };
     });
 
-    // Start recorder with timeslice to ensure continuous chunk flushing
+    // 7. 録画開始とほぼ同時にvideo.play()
     recorder.start(500);
+    const recordingStartTime = performance.now();
 
-    // Step through frames
+    if (videoElem) {
+      try {
+        const playPromise = videoElem.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            console.warn('MediaRecorder export video.play() warning:', err);
+          });
+        }
+      } catch (err) {
+        console.warn('MediaRecorder export video.play() error:', err);
+      }
+    }
+
+    // 8. videoは通常の実時間再生に任せる (フレーム単位のseekは行わない)
+    // 9. Canvas render loopは録画中の実時間に合わせて描画
+    // 10. 動画末尾では最終フレームを保持 (loop = false のため自動停止)
     for (let f = 0; f < totalFrames; f++) {
-      const timeMs = f * frameIntervalMs;
+      const now = performance.now();
+      const elapsedWallClockMs = now - recordingStartTime;
+      const timeMs = Math.min(elapsedWallClockMs, totalDurationMs);
+
       // Uses the EXACT SAME deterministic renderScene and motion equations
       renderScene(ctx, baseImage, stamps, width, height, timeMs, sceneMotionId, totalDurationMs, {
         isInteractivePreview: false,
@@ -403,11 +715,35 @@ export async function exportVideoMediaRecorder(
         mapDetection,
       }, undefined, maskConfig, layoutMode, mapSegment);
 
+      // Signal capture stream if requestFrame is supported
+      if (videoTrack && typeof (videoTrack as any).requestFrame === 'function') {
+        try {
+          (videoTrack as any).requestFrame();
+        } catch (_e) {
+          // ignore
+        }
+      }
+
       const percent = Math.round(15 + (f / totalFrames) * 75);
       onProgress?.(percent, `動画フレーム記録中 (${Math.round((f / totalFrames) * 100)}%)…`);
 
-      // Wait frame interval to allow real-time captureStream ingestion
-      await new Promise((r) => setTimeout(r, frameIntervalMs));
+      // Wall-clock pacing for real-time MediaRecorder
+      const targetNextElapsedMs = (f + 1) * frameIntervalMs;
+      const currentElapsedMs = performance.now() - recordingStartTime;
+      const sleepMs = targetNextElapsedMs - currentElapsedMs;
+
+      if (sleepMs > 0) {
+        await new Promise((r) => setTimeout(r, sleepMs));
+      } else {
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    }
+
+    // Ensure video is paused at end
+    if (videoElem && !videoElem.paused) {
+      try {
+        videoElem.pause();
+      } catch (_e) {}
     }
 
     onProgress?.(92, '動画ストリームを確定中…');
@@ -438,6 +774,11 @@ export async function exportVideoMediaRecorder(
       isGifFallback: false,
     };
   } finally {
+    if (videoElem && !videoElem.paused) {
+      try {
+        videoElem.pause();
+      } catch (_e) {}
+    }
     if (canvas.parentNode) {
       document.body.removeChild(canvas);
     }
@@ -448,7 +789,7 @@ export async function exportVideoMediaRecorder(
  * Master Background Exporter
  * Intelligently picks the safest, highest-compatibility format:
  * - If no stamps or all static -> exports Still Image
- * - If motion exists:
+ * - If motion exists (or video replacement is active):
  *     Attempts MediaRecorder with preferred codec (MP4 on iOS / WebM on Chrome).
  *     If MediaRecorder is unsupported or fails, seamlessly falls back to Animated GIF,
  *     marking isGifFallback = true with clear diagnostic reason.
@@ -465,10 +806,19 @@ export async function exportArtwork(
   mapSegment?: MapSegmentState,
   mapDetection?: MapPanelDetectionResult | null
 ): Promise<ExportResult> {
+  const isVideoSegment = Boolean(
+    mapSegment &&
+    mapSegment.mode === 'video' &&
+    mapSegment.videoElement &&
+    mapSegment.isVideoLoaded &&
+    !mapSegment.videoError
+  );
+
   const hasMotion =
     sceneMotionId !== 'none' ||
     stamps.some((s) => s.motionId !== 'none') ||
-    (maskConfig && maskConfig.type !== 'none');
+    (maskConfig && maskConfig.type !== 'none') ||
+    isVideoSegment;
 
   // Case 1: No motion -> Still image
   if (!hasMotion) {
@@ -489,6 +839,10 @@ export async function exportArtwork(
     try {
       return await exportVideoMediaRecorder(baseImage, stamps, supportedMime, sceneMotionId, quality, onProgress, maskConfig, layoutMode, mapSegment, mapDetection);
     } catch (err: any) {
+      // If error is an explicit video seek failure, don't conceal it under GIF fallback; bubble up
+      if (err.message && err.message.includes('シーク')) {
+        throw err;
+      }
       const reason = `MediaRecorder失敗 [${supportedMime}]: ${err.message || String(err)}`;
       console.warn('MediaRecorder export failed, falling back to Animated GIF:', reason);
       onProgress?.(20, '動画記録に失敗したため、GIFフォールバックを実行します…');
