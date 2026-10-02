@@ -242,6 +242,15 @@ export interface DeveloperInfoData {
   gifFallbackReason: string | null;
   webCodecsAvailable: boolean;
   webCodecsH264Available: boolean;
+  // PWA Standalone & Viewport diagnostics
+  isStandalone?: boolean;
+  visualViewportWidth?: number;
+  visualViewportHeight?: number;
+  visualViewportOffsetTop?: number;
+  visualViewportOffsetLeft?: number;
+  safeAreaTop?: number;
+  safeAreaBottom?: number;
+  canvasBoundingClientRect?: { left: number; top: number; width: number; height: number };
   // Avatar Extraction telemetry
   avatarExtractionMethod: string;
   avatarModelName?: string;

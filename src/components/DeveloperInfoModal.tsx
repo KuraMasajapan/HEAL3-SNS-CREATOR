@@ -79,9 +79,18 @@ export default function DeveloperInfoModal({
         <div className="p-4 overflow-y-auto space-y-3.5 text-xs font-mono">
           {/* Device & Browser */}
           <div className="bg-neutral-950/70 border border-neutral-800/80 rounded-xl p-3 space-y-2">
-            <div className="flex items-center gap-1.5 text-sky-400 font-semibold text-[11px] uppercase tracking-wider font-sans">
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>Device & Viewport Metrics</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-sky-400 font-semibold text-[11px] uppercase tracking-wider font-sans">
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>Device & Viewport Metrics</span>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-medium ${
+                devInfo.isStandalone
+                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-700/60'
+                  : 'bg-neutral-900 text-neutral-300 border border-neutral-700/60'
+              }`}>
+                {devInfo.isStandalone ? 'Home Screen Standalone (PWA)' : 'Safari (Standard Browser)'}
+              </span>
             </div>
             <div className="space-y-1 text-neutral-300">
               <div className="pb-1 border-b border-neutral-800/60 flex items-center justify-between">
@@ -104,9 +113,18 @@ export default function DeveloperInfoModal({
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">Visual Viewport Scale</span>
+                  <span className="text-neutral-500 block text-[10px]">Visual Viewport</span>
                   <span className="font-semibold text-neutral-200">
-                    {devInfo.visualViewportScale.toFixed(2)}
+                    {devInfo.visualViewportWidth ?? devInfo.viewportWidth} × {devInfo.visualViewportHeight ?? devInfo.viewportHeight}
+                    <span className="text-[10px] text-neutral-400 block font-normal">
+                      scale: {devInfo.visualViewportScale.toFixed(2)} / top: {devInfo.visualViewportOffsetTop ?? 0}px
+                    </span>
+                  </span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">Safe Area Insets</span>
+                  <span className="font-semibold text-neutral-200">
+                    Top: {devInfo.safeAreaTop ?? 0}px / Bottom: {devInfo.safeAreaBottom ?? 0}px
                   </span>
                 </div>
                 <div>
@@ -208,6 +226,20 @@ export default function DeveloperInfoModal({
                 <span className="text-neutral-500 block text-[10px]">Canvas Display (CSS)</span>
                 <span className="font-semibold text-neutral-200">
                   {devInfo.canvasDisplayWidth} × {devInfo.canvasDisplayHeight} px
+                </span>
+              </div>
+              <div className="col-span-2">
+                <span className="text-neutral-500 block text-[10px]">Canvas getBoundingClientRect()</span>
+                <span className="font-semibold text-emerald-300 font-mono text-[11px] block bg-neutral-900/80 px-2 py-1 rounded border border-neutral-800">
+                  {devInfo.canvasBoundingClientRect
+                    ? `W: ${devInfo.canvasBoundingClientRect.width} × H: ${devInfo.canvasBoundingClientRect.height} px (left: ${devInfo.canvasBoundingClientRect.left}, top: ${devInfo.canvasBoundingClientRect.top})`
+                    : `${devInfo.canvasDisplayWidth} × ${devInfo.canvasDisplayHeight} px`}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[10px]">Aspect Consistency</span>
+                <span className="font-semibold text-emerald-400">
+                  {(devInfo.canvasBufferWidth / devInfo.canvasBufferHeight).toFixed(3)} (Buffer = CSS)
                 </span>
               </div>
               <div>

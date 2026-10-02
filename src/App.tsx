@@ -211,13 +211,20 @@ export default function App() {
   }, []);
 
   const handleCanvasMetricsUpdate = useCallback(
-    (bufferW: number, bufferH: number, dispW: number, dispH: number) => {
+    (
+      bufferW: number,
+      bufferH: number,
+      dispW: number,
+      dispH: number,
+      clientRect?: { left: number; top: number; width: number; height: number }
+    ) => {
       setDevInfo((prev) => ({
         ...prev,
         canvasBufferWidth: bufferW,
         canvasBufferHeight: bufferH,
         canvasDisplayWidth: dispW,
         canvasDisplayHeight: dispH,
+        canvasBoundingClientRect: clientRect ?? prev.canvasBoundingClientRect,
       }));
     },
     []
@@ -238,6 +245,13 @@ export default function App() {
       viewportWidth: vp.windowWidth,
       viewportHeight: vp.windowHeight,
       visualViewportScale: vp.visualViewportScale,
+      visualViewportWidth: vp.visualViewportWidth,
+      visualViewportHeight: vp.visualViewportHeight,
+      visualViewportOffsetTop: vp.visualViewportOffsetTop,
+      visualViewportOffsetLeft: vp.visualViewportOffsetLeft,
+      safeAreaTop: vp.safeAreaTop,
+      safeAreaBottom: vp.safeAreaBottom,
+      isStandalone: vp.isStandalone,
       devicePixelRatio: vp.dpr,
       stampCount: stamps.length,
       foregroundItemCount: fgCount,
@@ -619,8 +633,8 @@ export default function App() {
     <div
       id="app-root"
       style={{
-        height: 'var(--app-height, 100dvh)',
-        maxHeight: 'var(--app-height, 100dvh)',
+        height: 'var(--app-height, 100vh)',
+        maxHeight: 'var(--app-height, 100vh)',
       }}
       className="flex flex-col w-full overflow-hidden bg-neutral-950 text-neutral-100 font-sans select-none"
     >

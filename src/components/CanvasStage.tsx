@@ -27,7 +27,13 @@ interface CanvasStageProps {
   onSelectStamp: (id: string | null) => void;
   onUpdateStamp: (stamp: StampItem) => void;
   onFpsUpdate: (fps: number) => void;
-  onCanvasMetricsUpdate: (bufferW: number, bufferH: number, displayW: number, displayH: number) => void;
+  onCanvasMetricsUpdate: (
+    bufferW: number,
+    bufferH: number,
+    displayW: number,
+    displayH: number,
+    clientRect?: { left: number; top: number; width: number; height: number }
+  ) => void;
   onUpdateMapCrop?: (crop: { photoOffsetX?: number; photoOffsetY?: number; photoScale?: number }) => void;
 }
 
@@ -133,17 +139,26 @@ export default function CanvasStage({
     const updateSize = () => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const containerW = rect.width;
-      const containerH = rect.height;
-      if (containerW <= 0 || containerH <= 0) return;
+      if (rect.width <= 0 || rect.height <= 0) return;
 
-      const aspect = baseImage.aspectRatio || 9 / 16;
-      let dispW = containerW;
-      let dispH = containerW / aspect;
+      // Extract container computed padding to fit strictly inside the content-box
+      // This prevents flexbox from shrinking or overflowing canvas in standalone PWA or on tall viewports
+      const computed = window.getComputedStyle(containerRef.current);
+      const padLeft = parseFloat(computed.paddingLeft) || 0;
+      const padRight = parseFloat(computed.paddingRight) || 0;
+      const padTop = parseFloat(computed.paddingTop) || 0;
+      const padBottom = parseFloat(computed.paddingBottom) || 0;
 
-      if (dispH > containerH) {
-        dispH = containerH;
-        dispW = containerH * aspect;
+      const availW = Math.max(10, rect.width - padLeft - padRight);
+      const availH = Math.max(10, rect.height - padTop - padBottom);
+
+      const aspect = baseImage.aspectRatio || (baseImage.originalWidth / baseImage.originalHeight) || (720 / 1280);
+      let dispW = availW;
+      let dispH = availW / aspect;
+
+      if (dispH > availH) {
+        dispH = availH;
+        dispW = availH * aspect;
       }
 
       dispW = Math.floor(dispW);
@@ -154,7 +169,19 @@ export default function CanvasStage({
 
       const bufferW = Math.round(dispW * dpr);
       const bufferH = Math.round(dispH * dpr);
-      onCanvasMetricsUpdate(bufferW, bufferH, dispW, dispH);
+
+      let clientRect: { left: number; top: number; width: number; height: number } | undefined = undefined;
+      if (canvasRef.current) {
+        const cRect = canvasRef.current.getBoundingClientRect();
+        clientRect = {
+          left: Math.round(cRect.left * 10) / 10,
+          top: Math.round(cRect.top * 10) / 10,
+          width: Math.round(cRect.width * 10) / 10,
+          height: Math.round(cRect.height * 10) / 10,
+        };
+      }
+
+      onCanvasMetricsUpdate(bufferW, bufferH, dispW, dispH, clientRect);
     };
 
     updateSize();
@@ -176,7 +203,7 @@ export default function CanvasStage({
       window.removeEventListener('resize', updateSize);
       window.removeEventListener('orientationchange', updateSize);
     };
-  }, [baseImage.aspectRatio, onCanvasMetricsUpdate]);
+  }, [baseImage.aspectRatio, baseImage.originalWidth, baseImage.originalHeight, onCanvasMetricsUpdate]);
 
   // Main 60FPS animation loop using requestAnimationFrame
   useEffect(() => {
@@ -755,8 +782,13 @@ export default function CanvasStage({
         style={{
           width: `${displayMetrics.width}px`,
           height: `${displayMetrics.height}px`,
+          maxWidth: `${displayMetrics.width}px`,
+          maxHeight: `${displayMetrics.height}px`,
+          minWidth: `${displayMetrics.width}px`,
+          minHeight: `${displayMetrics.height}px`,
+          aspectRatio: `${baseImage.aspectRatio || (720 / 1280)}`,
         }}
-        className="rounded-2xl shadow-2xl bg-neutral-950 touch-none cursor-pointer border border-neutral-800/60"
+        className="flex-shrink-0 rounded-2xl shadow-2xl bg-neutral-950 touch-none cursor-pointer border border-neutral-800/60"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
